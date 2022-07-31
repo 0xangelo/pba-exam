@@ -11,11 +11,11 @@ mod tests;
 #[frame_support::pallet]
 pub mod pallet {
     use codec::FullCodec;
-    use frame_support::pallet_prelude::*;
+    use frame_support::{pallet_prelude::*, traits::fungibles::Transfer};
     use frame_system::pallet_prelude::*;
     use sp_runtime::{
         traits::{CheckedAdd, One, Zero},
-        ArithmeticError,
+        ArithmeticError, FixedPointNumber,
     };
     use sp_std::fmt::Debug;
 
@@ -38,6 +38,10 @@ pub mod pallet {
             + One
             + PartialEq
             + TypeInfo;
+        /// The asset identifier type.
+        type AssetId: Clone + Debug + Decode + Encode + MaxEncodedLen + PartialEq + TypeInfo;
+        /// Asset transfer mechanism.
+        type Assets: Transfer<Self::AccountId>;
         /// Type of balances for user accounts and AMM reserves.
         type Balance: Clone
             + Debug
@@ -48,6 +52,8 @@ pub mod pallet {
             + PartialEq
             + TypeInfo
             + Zero;
+        /// Type of unsigned fixed point number used for internal calculations.
+        type Decimal: FixedPointNumber;
         /// Event type.
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
     }
@@ -70,7 +76,9 @@ pub mod pallet {
     #[codec(mel_bound())]
     pub struct Amm<T: Config> {
         pub total_shares: T::Balance,
+        pub base_asset: T::AssetId,
         pub base_reserves: T::Balance,
+        pub quote_asset: T::AssetId,
         pub quote_reserves: T::Balance,
         pub fees_bps: T::Balance,
     }
@@ -115,26 +123,48 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         #[pallet::weight(1_000)]
-        pub fn create_amm(origin: OriginFor<T>, fees_bps: T::Balance) -> DispatchResult {
+        pub fn create_amm(
+            origin: OriginFor<T>,
+            base_asset: T::AssetId,
+            quote_asset: T::AssetId,
+            fees_bps: T::Balance,
+        ) -> DispatchResult {
             ensure_root(origin)?;
 
-            AmmCount::<T>::try_mutate(|count: &mut T::AmmId| -> Result<(), _> {
-                let event = Event::<T>::AmmCreated(*count);
-                AmmStates::<T>::insert(
-                    *count,
-                    Amm {
-                        total_shares: Zero::zero(),
-                        base_reserves: Zero::zero(),
-                        quote_reserves: Zero::zero(),
-                        fees_bps,
-                    },
-                );
-                *count = count
-                    .checked_add(&One::one())
-                    .ok_or(ArithmeticError::Overflow)?;
-                Self::deposit_event(event);
-                Ok(())
-            })
+            let amm_id = AmmCount::<T>::try_mutate(
+                |count: &mut T::AmmId| -> Result<T::AmmId, ArithmeticError> {
+                    let amm_id = *count;
+                    AmmStates::<T>::insert(
+                        *count,
+                        Amm {
+                            total_shares: Zero::zero(),
+                            base_asset,
+                            base_reserves: Zero::zero(),
+                            quote_asset,
+                            quote_reserves: Zero::zero(),
+                            fees_bps,
+                        },
+                    );
+                    *count = count
+                        .checked_add(&One::one())
+                        .ok_or(ArithmeticError::Overflow)?;
+                    Ok(amm_id)
+                },
+            )?;
+
+            Self::deposit_event(Event::<T>::AmmCreated(amm_id));
+            Ok(())
+        }
+
+        #[pallet::weight(1_000)]
+        pub fn provide_liquidity(
+            origin: OriginFor<T>,
+            amm_id: T::AmmId,
+            base_amount: T::Balance,
+            quote_amount: T::Balance,
+        ) -> DispatchResult {
+            let caller = ensure_signed(origin)?;
+            todo!()
         }
     }
 }
