@@ -1,5 +1,9 @@
 use crate as pallet_dex;
-use frame_support::traits::{ConstU16, ConstU32, ConstU64};
+use frame_support::{
+    parameter_types,
+    traits::{ConstU16, ConstU32, ConstU64, GenesisBuild},
+    PalletId,
+};
 use frame_system as system;
 use pallet_assets::FrozenBalance;
 use sp_core::H256;
@@ -9,14 +13,14 @@ use sp_runtime::{
     FixedU128,
 };
 
+pub const DEFAULT_DECIMALS: u8 = 6;
+
 pub type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Runtime>;
 pub type AccountId = u64;
 pub type AmmId = u64;
 pub type AssetId = u32;
 pub type Balance = u64;
 pub type Block = frame_system::mocking::MockBlock<Runtime>;
-
-pub const ALICE: AccountId = 1;
 
 // Configure a mock runtime to test the pallet.
 frame_support::construct_runtime!(
@@ -76,11 +80,11 @@ thread_local! {
 pub struct TestFreezer;
 impl FrozenBalance<u32, u64, u64> for TestFreezer {
     fn frozen_balance(asset: u32, who: &u64) -> Option<u64> {
-        FROZEN.with(|f| f.borrow().get(&(asset, who.clone())).cloned())
+        FROZEN.with(|f| f.borrow().get(&(asset, *who)).cloned())
     }
 
     fn died(asset: u32, who: &u64) {
-        HOOKS.with(|h| h.borrow_mut().push(Hook::Died(asset, who.clone())));
+        HOOKS.with(|h| h.borrow_mut().push(Hook::Died(asset, *who)));
         // Sanity check: dead accounts have no balance.
         assert!(Assets::balance(asset, *who).is_zero());
     }
@@ -117,6 +121,10 @@ impl pallet_balances::Config for Runtime {
 // -------------------------------------------------------------------------------------------------
 // -------------------------------------------------------------------------------------------------
 
+parameter_types! {
+    pub const TestPalletId: PalletId = PalletId(*b"test_pid");
+}
+
 impl pallet_dex::Config for Runtime {
     type AmmId = AmmId;
     type AssetId = AssetId;
@@ -124,6 +132,7 @@ impl pallet_dex::Config for Runtime {
     type Balance = Balance;
     type Decimal = FixedU128;
     type Event = Event;
+    type PalletId = TestPalletId;
 }
 
 // Build genesis storage according to the mock runtime.
@@ -132,4 +141,31 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
         .build_storage::<Runtime>()
         .unwrap()
         .into()
+}
+
+pub struct ExtBuilder {
+    /// Genesis assets: id, owner, is_sufficient, min_balance
+    pub assets: Vec<(AssetId, AccountId, bool, Balance)>,
+    /// Genesis metadata: id, name, symbol, decimals
+    pub metadata: Vec<(AssetId, Vec<u8>, Vec<u8>, u8)>,
+    /// Genesis accounts: id, account_id, balance
+    pub accounts: Vec<(AssetId, AccountId, Balance)>,
+}
+
+impl ExtBuilder {
+    pub fn build(self) -> sp_io::TestExternalities {
+        let mut storage = frame_system::GenesisConfig::default()
+            .build_storage::<Runtime>()
+            .unwrap();
+
+        pallet_assets::GenesisConfig::<Runtime> {
+            assets: self.assets,
+            metadata: self.metadata,
+            accounts: self.accounts,
+        }
+        .assimilate_storage(&mut storage)
+        .unwrap();
+
+        storage.into()
+    }
 }

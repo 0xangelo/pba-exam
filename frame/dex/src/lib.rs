@@ -11,10 +11,14 @@ mod tests;
 #[frame_support::pallet]
 pub mod pallet {
     use codec::FullCodec;
-    use frame_support::{pallet_prelude::*, traits::fungibles::Transfer};
+    use frame_support::{
+        pallet_prelude::*,
+        traits::fungibles::{Inspect, Transfer},
+        PalletId,
+    };
     use frame_system::pallet_prelude::*;
     use sp_runtime::{
-        traits::{CheckedAdd, One, Zero},
+        traits::{AccountIdConversion, CheckedAdd, One, Zero},
         ArithmeticError, FixedPointNumber,
     };
     use sp_std::fmt::Debug;
@@ -38,10 +42,14 @@ pub mod pallet {
             + One
             + PartialEq
             + TypeInfo;
+
         /// The asset identifier type.
         type AssetId: Clone + Debug + Decode + Encode + MaxEncodedLen + PartialEq + TypeInfo;
+
         /// Asset transfer mechanism.
-        type Assets: Transfer<Self::AccountId>;
+        type Assets: Inspect<Self::AccountId, AssetId = Self::AssetId, Balance = Self::Balance>
+            + Transfer<Self::AccountId, AssetId = Self::AssetId, Balance = Self::Balance>;
+
         /// Type of balances for user accounts and AMM reserves.
         type Balance: Clone
             + Debug
@@ -52,10 +60,16 @@ pub mod pallet {
             + PartialEq
             + TypeInfo
             + Zero;
+
         /// Type of unsigned fixed point number used for internal calculations.
         type Decimal: FixedPointNumber;
+
         /// Event type.
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+
+        /// The `AccountId` of the pallet.
+        #[pallet::constant]
+        type PalletId: Get<PalletId>;
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -85,7 +99,7 @@ pub mod pallet {
 
     /// Mapping from AMM ids to corresponding states.
     #[pallet::storage]
-    #[pallet::getter(fn something)]
+    #[pallet::getter(fn amm_state)]
     pub type AmmStates<T: Config> = StorageMap<_, Blake2_128Concat, T::AmmId, Amm<T>>;
 
     #[pallet::storage]
@@ -114,7 +128,10 @@ pub mod pallet {
     // ---------------------------------------------------------------------------------------------
 
     #[pallet::error]
-    pub enum Error<T> {}
+    pub enum Error<T> {
+        /// Raised when an operation targets a nonexistent AMM.
+        InvalidAmmId,
+    }
 
     // ---------------------------------------------------------------------------------------------
     //                                      Extrinsics
@@ -164,7 +181,40 @@ pub mod pallet {
             quote_amount: T::Balance,
         ) -> DispatchResult {
             let caller = ensure_signed(origin)?;
-            todo!()
+
+            let state = Self::amm_state(&amm_id).ok_or(Error::<T>::InvalidAmmId)?;
+
+            if state.total_shares.is_zero() {
+                T::Assets::transfer(
+                    state.base_asset,
+                    &caller,
+                    &Self::amm_account(&amm_id),
+                    base_amount,
+                    false,
+                )?;
+
+                T::Assets::transfer(
+                    state.quote_asset,
+                    &caller,
+                    &Self::amm_account(&amm_id),
+                    quote_amount,
+                    false,
+                )?;
+            } else {
+                todo!()
+            }
+
+            Ok(())
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    //                                      Helpers
+    // ---------------------------------------------------------------------------------------------
+
+    impl<T: Config> Pallet<T> {
+        fn amm_account(amm_id: &T::AmmId) -> T::AccountId {
+            T::PalletId::get().into_sub_account_truncating(amm_id)
         }
     }
 }
