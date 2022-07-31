@@ -7,12 +7,17 @@ use sp_runtime::{
     traits::{BlakeTwo256, IdentityLookup},
 };
 
-type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
-type Block = frame_system::mocking::MockBlock<Test>;
+pub type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Runtime>;
+pub type AccountId = u64;
+pub type AmmId = u64;
+pub type Balance = u128;
+pub type Block = frame_system::mocking::MockBlock<Runtime>;
+
+pub const ALICE: AccountId = 1;
 
 // Configure a mock runtime to test the pallet.
 frame_support::construct_runtime!(
-    pub enum Test where
+    pub enum Runtime where
         Block = Block,
         NodeBlock = Block,
         UncheckedExtrinsic = UncheckedExtrinsic,
@@ -22,7 +27,7 @@ frame_support::construct_runtime!(
     }
 );
 
-impl system::Config for Test {
+impl system::Config for Runtime {
     type BaseCallFilter = frame_support::traits::Everything;
     type BlockWeights = ();
     type BlockLength = ();
@@ -33,7 +38,7 @@ impl system::Config for Test {
     type BlockNumber = u64;
     type Hash = H256;
     type Hashing = BlakeTwo256;
-    type AccountId = u64;
+    type AccountId = AccountId;
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
     type Event = Event;
@@ -49,16 +54,16 @@ impl system::Config for Test {
     type MaxConsumers = frame_support::traits::ConstU32<16>;
 }
 
-impl pallet_dex::Config for Test {
+impl pallet_dex::Config for Runtime {
     type Event = Event;
-    type AmmId = u64;
-    type Balance = u128;
+    type AmmId = AmmId;
+    type Balance = Balance;
 }
 
 // Build genesis storage according to the mock runtime.
 pub fn new_test_ext() -> sp_io::TestExternalities {
     system::GenesisConfig::default()
-        .build_storage::<Test>()
+        .build_storage::<Runtime>()
         .unwrap()
         .into()
 }
