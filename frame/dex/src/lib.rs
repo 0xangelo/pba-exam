@@ -12,7 +12,6 @@ mod tests;
 
 #[frame_support::pallet]
 pub mod pallet {
-    use core::ops::AddAssign;
 
     use crate::helpers::*;
     use codec::FullCodec;
@@ -25,7 +24,7 @@ pub mod pallet {
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::{
-        traits::{AccountIdConversion, CheckedAdd, CheckedDiv, CheckedMul, One, Saturating, Zero},
+        traits::{AccountIdConversion, CheckedAdd, CheckedDiv, CheckedMul, One, Saturating, Zero, CheckedSub},
         ArithmeticError, FixedPointNumber,
     };
     use sp_std::fmt::Debug;
@@ -62,9 +61,10 @@ pub mod pallet {
             + Transfer<Self::AccountId, AssetId = Self::AssetId, Balance = Self::Balance>;
 
         /// Type of balances for user accounts and AMM reserves.
-        type Balance: AddAssign
+        type Balance: CheckedAdd
             + CheckedDiv
             + CheckedMul
+            + CheckedSub
             + Clone
             + Copy
             + Debug
@@ -153,6 +153,8 @@ pub mod pallet {
     pub enum Error<T> {
         /// Raised when an operation targets a nonexistent AMM.
         InvalidAmmId,
+        /// Raised when trying to withdraw more LP shares than a user has in their account.
+        InvalidShareAmount,
         /// Raised when failing to create a new asset type for LP shares.
         InvalidShareAsset,
         /// Raised when trying to provide liquidity with non-equivalent values of the two assets in the pool.
@@ -268,11 +270,59 @@ pub mod pallet {
 
             T::Assets::mint_into(state.share_asset, &caller, shares)?;
 
-            state.base_reserves += base_amount;
-            state.quote_reserves += quote_amount;
-            state.total_shares += shares;
+            state.base_reserves = state.base_reserves.try_add(&base_amount)?;
+            state.quote_reserves = state.quote_reserves.try_add(&quote_amount)?;
+            state.total_shares = state.total_shares.try_add(&shares)?;
 
             AmmStates::<T>::insert(&amm_id, state);
+
+            Ok(())
+        }
+
+        #[pallet::weight(1_000)]
+        pub fn withdraw(
+            origin: OriginFor<T>,
+            amm_id: T::AmmId,
+            amount: T::Balance,
+        ) -> DispatchResult {
+            let caller = ensure_signed(origin)?;
+
+            let mut amm_state = Self::amm_state(&amm_id).ok_or(Error::<T>::InvalidAmmId)?;
+
+            T::Assets::burn_from(amm_state.share_asset, &caller, amount)
+                .map_err(|_| Error::<T>::InvalidShareAmount)?;
+
+            let base_amount = amount
+                .try_mul(&amm_state.base_reserves)?
+                .try_div(&amm_state.total_shares)?;
+            let quote_amount = amount
+                .try_mul(&amm_state.quote_reserves)?
+                .try_div(&amm_state.total_shares)?;
+
+            let amm_account = Self::amm_account(&amm_id);
+            T::Assets::transfer(
+                amm_state.base_asset,
+                &amm_account,
+                &caller,
+                base_amount,
+                false,
+            )?;
+            T::Assets::transfer(
+                amm_state.quote_asset,
+                &amm_account,
+                &caller,
+                quote_amount,
+                false,
+            )?;
+
+            amm_state.total_shares = amm_state.total_shares
+                .try_sub(&amount)?;
+            amm_state.base_reserves = amm_state.base_reserves
+                .try_sub(&base_amount)?;
+            amm_state.quote_reserves = amm_state.quote_reserves
+                .try_sub(&quote_amount)?;
+
+            AmmStates::<T>::insert(&amm_id, amm_state);
 
             Ok(())
         }

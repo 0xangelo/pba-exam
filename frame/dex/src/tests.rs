@@ -290,3 +290,77 @@ fn second_liquidity_provider_adds_to_the_pool() {
         assert_eq!(amm_state.total_shares, 150 * UNIT);
     })
 }
+
+#[test]
+fn cannot_withdraw_from_nonexistent_amm() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            TestPallet::withdraw(Origin::signed(ALICE), 0, UNIT),
+            Error::<Runtime>::InvalidAmmId
+        );
+    })
+}
+
+#[test]
+fn cannot_withdraw_if_doesnt_have_shares() {
+    ExtBuilder::default().build().execute_with(|| {
+        default_amm();
+
+        assert_noop!(
+            TestPallet::withdraw(Origin::signed(ALICE), 0, UNIT),
+            Error::<Runtime>::InvalidShareAmount
+        );
+    })
+}
+
+#[test]
+fn withdraw_returns_share_of_pool_assets() {
+    ExtBuilder {
+        accounts: vec![
+            (DOT, ALICE, UNIT),
+            (USDC, ALICE, UNIT * 100),
+            (DOT, BOB, UNIT / 2),
+            (USDC, BOB, UNIT * 50),
+        ],
+        ..Default::default()
+    }
+    .build()
+    .execute_with(|| {
+        default_amm();
+
+        assert_ok!(TestPallet::provide_liquidity(
+            Origin::signed(ALICE),
+            0,
+            UNIT,
+            UNIT * 100,
+        ));
+
+        assert_ok!(TestPallet::provide_liquidity(
+            Origin::signed(BOB),
+            0,
+            UNIT / 2,
+            UNIT * 50,
+        ));
+
+        assert_ok!(TestPallet::withdraw(Origin::signed(ALICE), 0, 100 * UNIT));
+
+        assert_eq!(<Assets as Inspect<AccountId>>::balance(DOT, &ALICE), UNIT);
+        assert_eq!(
+            <Assets as Inspect<AccountId>>::balance(USDC, &ALICE),
+            UNIT * 100
+        );
+
+        assert_ok!(TestPallet::withdraw(Origin::signed(BOB), 0, 50 * UNIT));
+
+        assert_eq!(<Assets as Inspect<AccountId>>::balance(DOT, &BOB), UNIT / 2);
+        assert_eq!(
+            <Assets as Inspect<AccountId>>::balance(USDC, &BOB),
+            UNIT * 50
+        );
+
+        let amm_state = TestPallet::amm_state(0).unwrap();
+        assert_eq!(amm_state.total_shares, 0);
+        assert_eq!(amm_state.base_reserves, 0);
+        assert_eq!(amm_state.quote_reserves, 0);
+    })
+}
