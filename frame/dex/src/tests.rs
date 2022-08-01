@@ -1,13 +1,18 @@
 use crate::{mock::*, Error, Event};
 use frame_support::{
-    assert_noop, assert_ok, error::BadOrigin, pallet_prelude::Hooks, traits::fungibles::Inspect,
+    assert_noop, assert_ok,
+    error::BadOrigin,
+    pallet_prelude::Hooks,
+    traits::fungibles::{Create, Inspect},
 };
+use pallet_assets::Error as AssetsError;
 
 // -------------------------------------------------------------------------------------------------
 //                                          Setup
 // -------------------------------------------------------------------------------------------------
 pub const DEFAULT_BASE_ASSET: AssetId = 0;
 pub const DEFAULT_QUOTE_ASSET: AssetId = 1;
+pub const DEFAULT_SHARE_ASSET: AssetId = 100;
 pub const DEFAULT_FEES_BPS: Balance = 30;
 
 pub const ALICE: AccountId = 1;
@@ -80,6 +85,7 @@ fn only_root_can_create_amm() {
                 Origin::signed(ALICE),
                 DEFAULT_BASE_ASSET,
                 DEFAULT_QUOTE_ASSET,
+                DEFAULT_SHARE_ASSET,
                 DEFAULT_FEES_BPS
             ),
             BadOrigin
@@ -89,6 +95,7 @@ fn only_root_can_create_amm() {
             Origin::root(),
             DEFAULT_BASE_ASSET,
             DEFAULT_QUOTE_ASSET,
+            DEFAULT_SHARE_ASSET,
             DEFAULT_FEES_BPS
         ));
     });
@@ -103,6 +110,7 @@ fn create_amm_increments_amm_counter() {
             Origin::root(),
             DEFAULT_BASE_ASSET,
             DEFAULT_QUOTE_ASSET,
+            DEFAULT_SHARE_ASSET,
             DEFAULT_FEES_BPS
         ));
 
@@ -111,17 +119,81 @@ fn create_amm_increments_amm_counter() {
 }
 
 #[test]
+fn creating_the_same_asset_fails() {
+    new_test_ext().execute_with(|| {
+        <Assets as Create<AccountId>>::create(DEFAULT_SHARE_ASSET, 0, true, 1).unwrap();
+        assert_noop!(
+            <Assets as Create<AccountId>>::create(DEFAULT_SHARE_ASSET, 0, true, 1),
+            AssetsError::<Runtime>::InUse
+        );
+    })
+}
+
+#[test]
+fn cant_create_amm_with_existing_lp_asset() {
+    ExtBuilder::default().build().execute_with(|| {
+        assert_ok!(<Assets as Create<AccountId>>::create(
+            DEFAULT_SHARE_ASSET,
+            0,
+            true,
+            1
+        ));
+
+        assert_noop!(
+            TestPallet::create_amm(
+                Origin::root(),
+                DEFAULT_BASE_ASSET,
+                DEFAULT_QUOTE_ASSET,
+                DEFAULT_SHARE_ASSET,
+                DEFAULT_FEES_BPS
+            ),
+            Error::<Runtime>::InvalidShareAsset
+        );
+    })
+}
+
+// #[test]
+// fn create_amm_creates_new_liquidity_provider_asset() {
+//     ExtBuilder::default().build().execute_with(|| {
+//         // Runtime starts with no LP asset registered
+//         assert_eq!(
+//             <Assets as InspectMetadata<AccountId>>::name(&DEFAULT_SHARE_ASSET),
+//             Vec::<u8>::new()
+//         );
+
+//         assert_ok!(TestPallet::create_amm(
+//             Origin::root(),
+//             DOT,
+//             USDC,
+//             DEFAULT_SHARE_ASSET,
+//             DEFAULT_FEES_BPS
+//         ));
+
+//         let expected: Vec<u8> = b"DOT-USDC-LP"[..].into();
+//         assert_eq!(
+//             <Assets as InspectMetadata<AccountId>>::name(&DEFAULT_SHARE_ASSET),
+//             expected
+//         )
+//     })
+// }
+
+fn default_amm() {
+    assert_ok!(TestPallet::create_amm(
+        Origin::root(),
+        DOT,
+        USDC,
+        DEFAULT_SHARE_ASSET,
+        DEFAULT_FEES_BPS,
+    ));
+}
+
+#[test]
 fn create_amm_emits_event() {
     new_test_ext().execute_with(|| {
         // For events to be registered
         run_to_block(1);
 
-        assert_ok!(TestPallet::create_amm(
-            Origin::root(),
-            DEFAULT_BASE_ASSET,
-            DEFAULT_QUOTE_ASSET,
-            DEFAULT_FEES_BPS
-        ));
+        default_amm();
 
         System::assert_last_event(Event::AmmCreated(0).into());
     })
@@ -145,16 +217,40 @@ fn cant_provide_liquidity_if_holds_insufficient_token() {
     }
     .build()
     .execute_with(|| {
-        assert_ok!(TestPallet::create_amm(
-            Origin::root(),
-            DOT,
-            USDC,
-            DEFAULT_FEES_BPS,
-        ));
+        default_amm();
 
         assert_noop!(
             TestPallet::provide_liquidity(Origin::signed(ALICE), 0, UNIT * 2, UNIT * 200),
-            pallet_assets::Error::<Runtime>::BalanceLow,
+            AssetsError::<Runtime>::BalanceLow,
         );
+    })
+}
+
+#[test]
+fn first_liquidity_provider_initializes_amm() {
+    ExtBuilder {
+        accounts: vec![(DOT, ALICE, UNIT), (USDC, ALICE, UNIT * 100)],
+        ..Default::default()
+    }
+    .build()
+    .execute_with(|| {
+        default_amm();
+
+        assert_ok!(TestPallet::provide_liquidity(
+            Origin::signed(ALICE),
+            0,
+            UNIT,
+            UNIT * 100,
+        ));
+
+        let amm_state = TestPallet::amm_state(0).unwrap();
+        assert_eq!(amm_state.base_reserves, UNIT);
+        assert_eq!(amm_state.quote_reserves, UNIT * 100);
+
+        assert_eq!(
+            <Assets as Inspect<AccountId>>::balance(DEFAULT_SHARE_ASSET, &ALICE),
+            amm_state.total_shares
+        );
+        assert_eq!(amm_state.total_shares, 100 * UNIT);
     })
 }

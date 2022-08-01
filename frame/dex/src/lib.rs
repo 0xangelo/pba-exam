@@ -13,12 +13,14 @@ pub mod pallet {
     use codec::FullCodec;
     use frame_support::{
         pallet_prelude::*,
-        traits::fungibles::{Inspect, Transfer},
+        traits::fungibles::{
+            metadata::Mutate as MutateMetadata, Create, Inspect, InspectMetadata, Mutate, Transfer,
+        },
         PalletId,
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::{
-        traits::{AccountIdConversion, CheckedAdd, One, Zero},
+        traits::{AccountIdConversion, CheckedAdd, One, Saturating, Zero},
         ArithmeticError, FixedPointNumber,
     };
     use sp_std::fmt::Debug;
@@ -44,25 +46,36 @@ pub mod pallet {
             + TypeInfo;
 
         /// The asset identifier type.
-        type AssetId: Clone + Debug + Decode + Encode + MaxEncodedLen + PartialEq + TypeInfo;
+        type AssetId: Clone + Copy + Debug + Decode + Encode + MaxEncodedLen + PartialEq + TypeInfo;
 
         /// Asset transfer mechanism.
-        type Assets: Inspect<Self::AccountId, AssetId = Self::AssetId, Balance = Self::Balance>
+        type Assets: Create<Self::AccountId, AssetId = Self::AssetId, Balance = Self::Balance>
+            + Inspect<Self::AccountId, AssetId = Self::AssetId, Balance = Self::Balance>
+            + InspectMetadata<Self::AccountId, AssetId = Self::AssetId, Balance = Self::Balance>
+            + Mutate<Self::AccountId, AssetId = Self::AssetId, Balance = Self::Balance>
+            + MutateMetadata<Self::AccountId, AssetId = Self::AssetId, Balance = Self::Balance>
             + Transfer<Self::AccountId, AssetId = Self::AssetId, Balance = Self::Balance>;
 
         /// Type of balances for user accounts and AMM reserves.
         type Balance: Clone
+            + Copy
             + Debug
             + Decode
             + Encode
+            + From<u64>
             + FullCodec
             + MaxEncodedLen
+            + One
             + PartialEq
+            + Saturating
             + TypeInfo
             + Zero;
 
         /// Type of unsigned fixed point number used for internal calculations.
         type Decimal: FixedPointNumber;
+
+        /// Default number of decimal digits for AMM share asset.
+        type DefaultDecimals: Get<u8>;
 
         /// Event type.
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
@@ -89,11 +102,12 @@ pub mod pallet {
     #[scale_info(skip_type_params(T))]
     #[codec(mel_bound())]
     pub struct Amm<T: Config> {
-        pub total_shares: T::Balance,
         pub base_asset: T::AssetId,
         pub base_reserves: T::Balance,
         pub quote_asset: T::AssetId,
         pub quote_reserves: T::Balance,
+        pub share_asset: T::AssetId,
+        pub total_shares: T::Balance,
         pub fees_bps: T::Balance,
     }
 
@@ -131,6 +145,8 @@ pub mod pallet {
     pub enum Error<T> {
         /// Raised when an operation targets a nonexistent AMM.
         InvalidAmmId,
+        /// Raised when failing to create a new asset type for LP shares.
+        InvalidShareAsset,
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -144,30 +160,47 @@ pub mod pallet {
             origin: OriginFor<T>,
             base_asset: T::AssetId,
             quote_asset: T::AssetId,
+            share_asset: T::AssetId,
             fees_bps: T::Balance,
         ) -> DispatchResult {
             ensure_root(origin)?;
 
-            let amm_id = AmmCount::<T>::try_mutate(
-                |count: &mut T::AmmId| -> Result<T::AmmId, ArithmeticError> {
-                    let amm_id = *count;
-                    AmmStates::<T>::insert(
-                        *count,
-                        Amm {
-                            total_shares: Zero::zero(),
-                            base_asset,
-                            base_reserves: Zero::zero(),
-                            quote_asset,
-                            quote_reserves: Zero::zero(),
-                            fees_bps,
-                        },
-                    );
-                    *count = count
-                        .checked_add(&One::one())
-                        .ok_or(ArithmeticError::Overflow)?;
-                    Ok(amm_id)
-                },
-            )?;
+            let amm_id = Self::amm_count();
+            let amm_state = Amm {
+                base_asset,
+                base_reserves: Zero::zero(),
+                quote_asset,
+                quote_reserves: Zero::zero(),
+                share_asset,
+                total_shares: Zero::zero(),
+                fees_bps,
+            };
+
+            let amm_account = Self::amm_account(&amm_id);
+            T::Assets::create(
+                share_asset,
+                amm_account,
+                true,
+                One::one(), // Any share amount is fair game
+            )
+            .map_err(|_| Error::<T>::InvalidShareAsset)?;
+
+            // Mutating metadata requires a deposit, so calling this function with the just-created
+            // `amm_account` raises an "InsufficientBalance" error.
+            // <T::Assets as MutateMetadata<T::AccountId>>::set(
+            //     share_asset,
+            //     &amm_account,
+            //     (*b"").into(),
+            //     (*b"").into(),
+            //     T::DefaultDecimals::get(),
+            // )?;
+
+            AmmCount::<T>::set(
+                amm_id
+                    .checked_add(&One::one())
+                    .ok_or(ArithmeticError::Overflow)?,
+            );
+            AmmStates::<T>::insert(amm_id, amm_state);
 
             Self::deposit_event(Event::<T>::AmmCreated(amm_id));
             Ok(())
@@ -182,7 +215,7 @@ pub mod pallet {
         ) -> DispatchResult {
             let caller = ensure_signed(origin)?;
 
-            let state = Self::amm_state(&amm_id).ok_or(Error::<T>::InvalidAmmId)?;
+            let mut state = Self::amm_state(&amm_id).ok_or(Error::<T>::InvalidAmmId)?;
 
             if state.total_shares.is_zero() {
                 T::Assets::transfer(
@@ -200,9 +233,22 @@ pub mod pallet {
                     quote_amount,
                     false,
                 )?;
+
+                let unit: T::Balance = 10_u64
+                    .saturating_pow(T::DefaultDecimals::get() as u32)
+                    .into();
+                let shares = unit.saturating_mul(100_u64.into());
+
+                T::Assets::mint_into(state.share_asset, &caller, shares)?;
+
+                state.base_reserves = base_amount;
+                state.quote_reserves = quote_amount;
+                state.total_shares = shares;
             } else {
                 todo!()
             }
+
+            AmmStates::<T>::insert(&amm_id, state);
 
             Ok(())
         }

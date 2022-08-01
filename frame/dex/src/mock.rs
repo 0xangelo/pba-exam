@@ -123,6 +123,7 @@ impl pallet_balances::Config for Runtime {
 
 parameter_types! {
     pub const TestPalletId: PalletId = PalletId(*b"test_pid");
+    pub const DefaultDecimals: u8 = DEFAULT_DECIMALS;
 }
 
 impl pallet_dex::Config for Runtime {
@@ -131,6 +132,7 @@ impl pallet_dex::Config for Runtime {
     type Assets = Assets;
     type Balance = Balance;
     type Decimal = FixedU128;
+    type DefaultDecimals = DefaultDecimals;
     type Event = Event;
     type PalletId = TestPalletId;
 }
