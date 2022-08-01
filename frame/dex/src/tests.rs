@@ -234,6 +234,8 @@ fn first_liquidity_provider_initializes_amm() {
     }
     .build()
     .execute_with(|| {
+        run_to_block(1);
+
         default_amm();
 
         assert_ok!(TestPallet::provide_liquidity(
@@ -252,6 +254,15 @@ fn first_liquidity_provider_initializes_amm() {
             amm_state.total_shares
         );
         assert_eq!(amm_state.total_shares, 100 * UNIT);
+
+        System::assert_last_event(
+            Event::LiquidityAdded {
+                amm_id: 0,
+                user: ALICE,
+                shares: 100 * UNIT,
+            }
+            .into(),
+        );
     })
 }
 
@@ -326,6 +337,8 @@ fn withdraw_returns_share_of_pool_assets() {
     }
     .build()
     .execute_with(|| {
+        run_to_block(1);
+
         default_amm();
 
         assert_ok!(TestPallet::provide_liquidity(
@@ -343,7 +356,6 @@ fn withdraw_returns_share_of_pool_assets() {
         ));
 
         assert_ok!(TestPallet::withdraw(Origin::signed(ALICE), 0, 100 * UNIT));
-
         assert_eq!(
             <Assets as Inspect<AccountId>>::balance(DEFAULT_SHARE_ASSET, &ALICE),
             0
@@ -353,9 +365,16 @@ fn withdraw_returns_share_of_pool_assets() {
             <Assets as Inspect<AccountId>>::balance(USDC, &ALICE),
             UNIT * 100
         );
+        System::assert_last_event(
+            Event::LiquidityRemoved {
+                amm_id: 0,
+                user: ALICE,
+                shares: 100 * UNIT,
+            }
+            .into(),
+        );
 
         assert_ok!(TestPallet::withdraw(Origin::signed(BOB), 0, 50 * UNIT));
-
         assert_eq!(
             <Assets as Inspect<AccountId>>::balance(DEFAULT_SHARE_ASSET, &BOB),
             0
@@ -364,6 +383,14 @@ fn withdraw_returns_share_of_pool_assets() {
         assert_eq!(
             <Assets as Inspect<AccountId>>::balance(USDC, &BOB),
             UNIT * 50
+        );
+        System::assert_last_event(
+            Event::LiquidityRemoved {
+                amm_id: 0,
+                user: BOB,
+                shares: 50 * UNIT,
+            }
+            .into(),
         );
 
         let amm_state = TestPallet::amm_state(0).unwrap();

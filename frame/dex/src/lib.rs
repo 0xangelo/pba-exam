@@ -144,8 +144,20 @@ pub mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// Emitted when a new Amm is created
+        /// Emitted when a new Amm is created.
         AmmCreated(T::AmmId),
+        /// Emitted when a user adds liquidity to an AMM.
+        LiquidityAdded {
+            amm_id: T::AmmId,
+            user: T::AccountId,
+            shares: T::Balance,
+        },
+        /// Emitted when a user withdraws liquidity from an AMM.
+        LiquidityRemoved {
+            amm_id: T::AmmId,
+            user: T::AccountId,
+            shares: T::Balance,
+        },
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -279,6 +291,12 @@ pub mod pallet {
 
             AmmStates::<T>::insert(&amm_id, state);
 
+            Self::deposit_event(Event::<T>::LiquidityAdded {
+                amm_id,
+                user: caller,
+                shares,
+            });
+
             Ok(())
         }
 
@@ -323,6 +341,12 @@ pub mod pallet {
             amm_state.quote_reserves = amm_state.quote_reserves.try_sub(&quote_amount)?;
 
             AmmStates::<T>::insert(&amm_id, amm_state);
+
+            Self::deposit_event(Event::<T>::LiquidityRemoved {
+                amm_id,
+                user: caller,
+                shares: amount,
+            });
 
             Ok(())
         }
