@@ -227,22 +227,6 @@ pub mod pallet {
 
             let mut state = Self::amm_state(&amm_id).ok_or(Error::<T>::InvalidAmmId)?;
 
-            T::Assets::transfer(
-                state.base_asset,
-                &caller,
-                &Self::amm_account(&amm_id),
-                base_amount,
-                false,
-            )?;
-
-            T::Assets::transfer(
-                state.quote_asset,
-                &caller,
-                &Self::amm_account(&amm_id),
-                quote_amount,
-                false,
-            )?;
-
             let shares = if state.total_shares.is_zero() {
                 let unit: T::Balance = 10_u64
                     .saturating_pow(T::DefaultDecimals::get() as u32)
@@ -258,10 +242,29 @@ pub mod pallet {
                     .try_mul(&quote_amount)?
                     .try_div(&state.quote_reserves)?;
 
+                // This might be too strict. By the time the extrinsic is received and executed by
+                // the node, the reserves may have changed (even if slightly) from the when the
+                // caller calculated the amount of each asset.
                 ensure!(share1 == share2, Error::<T>::NonEquivalentValue);
 
                 share1
             };
+
+            T::Assets::transfer(
+                state.base_asset,
+                &caller,
+                &Self::amm_account(&amm_id),
+                base_amount,
+                false,
+            )?;
+
+            T::Assets::transfer(
+                state.quote_asset,
+                &caller,
+                &Self::amm_account(&amm_id),
+                quote_amount,
+                false,
+            )?;
 
             T::Assets::mint_into(state.share_asset, &caller, shares)?;
 
