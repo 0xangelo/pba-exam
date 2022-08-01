@@ -2,6 +2,8 @@
 
 pub use pallet::*;
 
+mod helpers;
+
 #[cfg(test)]
 mod mock;
 
@@ -10,6 +12,9 @@ mod tests;
 
 #[frame_support::pallet]
 pub mod pallet {
+    use core::ops::AddAssign;
+
+    use crate::helpers::*;
     use codec::FullCodec;
     use frame_support::{
         pallet_prelude::*,
@@ -20,7 +25,7 @@ pub mod pallet {
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::{
-        traits::{AccountIdConversion, CheckedAdd, One, Saturating, Zero},
+        traits::{AccountIdConversion, CheckedAdd, CheckedDiv, CheckedMul, One, Saturating, Zero},
         ArithmeticError, FixedPointNumber,
     };
     use sp_std::fmt::Debug;
@@ -57,7 +62,10 @@ pub mod pallet {
             + Transfer<Self::AccountId, AssetId = Self::AssetId, Balance = Self::Balance>;
 
         /// Type of balances for user accounts and AMM reserves.
-        type Balance: Clone
+        type Balance: AddAssign
+            + CheckedDiv
+            + CheckedMul
+            + Clone
             + Copy
             + Debug
             + Decode
@@ -147,6 +155,8 @@ pub mod pallet {
         InvalidAmmId,
         /// Raised when failing to create a new asset type for LP shares.
         InvalidShareAsset,
+        /// Raised when trying to provide liquidity with non-equivalent values of the two assets in the pool.
+        NonEquivalentValue,
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -217,36 +227,47 @@ pub mod pallet {
 
             let mut state = Self::amm_state(&amm_id).ok_or(Error::<T>::InvalidAmmId)?;
 
-            if state.total_shares.is_zero() {
-                T::Assets::transfer(
-                    state.base_asset,
-                    &caller,
-                    &Self::amm_account(&amm_id),
-                    base_amount,
-                    false,
-                )?;
+            T::Assets::transfer(
+                state.base_asset,
+                &caller,
+                &Self::amm_account(&amm_id),
+                base_amount,
+                false,
+            )?;
 
-                T::Assets::transfer(
-                    state.quote_asset,
-                    &caller,
-                    &Self::amm_account(&amm_id),
-                    quote_amount,
-                    false,
-                )?;
+            T::Assets::transfer(
+                state.quote_asset,
+                &caller,
+                &Self::amm_account(&amm_id),
+                quote_amount,
+                false,
+            )?;
 
+            let shares = if state.total_shares.is_zero() {
                 let unit: T::Balance = 10_u64
                     .saturating_pow(T::DefaultDecimals::get() as u32)
                     .into();
-                let shares = unit.saturating_mul(100_u64.into());
-
-                T::Assets::mint_into(state.share_asset, &caller, shares)?;
-
-                state.base_reserves = base_amount;
-                state.quote_reserves = quote_amount;
-                state.total_shares = shares;
+                unit.saturating_mul(100_u64.into())
             } else {
-                todo!()
-            }
+                let share1 = state
+                    .total_shares
+                    .try_mul(&base_amount)?
+                    .try_div(&state.base_reserves)?;
+                let share2 = state
+                    .total_shares
+                    .try_mul(&quote_amount)?
+                    .try_div(&state.quote_reserves)?;
+
+                ensure!(share1 == share2, Error::<T>::NonEquivalentValue);
+
+                share1
+            };
+
+            T::Assets::mint_into(state.share_asset, &caller, shares)?;
+
+            state.base_reserves += base_amount;
+            state.quote_reserves += quote_amount;
+            state.total_shares += shares;
 
             AmmStates::<T>::insert(&amm_id, state);
 

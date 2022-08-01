@@ -254,3 +254,39 @@ fn first_liquidity_provider_initializes_amm() {
         assert_eq!(amm_state.total_shares, 100 * UNIT);
     })
 }
+
+#[test]
+fn second_liquidity_provider_adds_to_the_pool() {
+    ExtBuilder {
+        accounts: vec![
+            (DOT, ALICE, UNIT),
+            (USDC, ALICE, UNIT * 100),
+            (DOT, BOB, UNIT),
+            (USDC, BOB, UNIT * 100),
+        ],
+        ..Default::default()
+    }
+    .build()
+    .execute_with(|| {
+        default_amm();
+
+        assert_ok!(TestPallet::provide_liquidity(
+            Origin::signed(ALICE),
+            0,
+            UNIT,
+            UNIT * 100,
+        ));
+
+        assert_ok!(TestPallet::provide_liquidity(
+            Origin::signed(BOB),
+            0,
+            UNIT / 2,
+            UNIT * 50,
+        ));
+
+        let amm_state = TestPallet::amm_state(0).unwrap();
+        assert_eq!(amm_state.base_reserves, UNIT + UNIT / 2);
+        assert_eq!(amm_state.quote_reserves, 150 * UNIT);
+        assert_eq!(amm_state.total_shares, 150 * UNIT);
+    })
+}
