@@ -24,7 +24,10 @@ pub mod pallet {
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::{
-        traits::{AccountIdConversion, CheckedAdd, CheckedDiv, CheckedMul, One, Saturating, Zero, CheckedSub},
+        traits::{
+            AccountIdConversion, CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, One, Saturating,
+            Zero,
+        },
         ArithmeticError, FixedPointNumber,
     };
     use sp_std::fmt::Debug;
@@ -315,12 +318,9 @@ pub mod pallet {
                 false,
             )?;
 
-            amm_state.total_shares = amm_state.total_shares
-                .try_sub(&amount)?;
-            amm_state.base_reserves = amm_state.base_reserves
-                .try_sub(&base_amount)?;
-            amm_state.quote_reserves = amm_state.quote_reserves
-                .try_sub(&quote_amount)?;
+            amm_state.total_shares = amm_state.total_shares.try_sub(&amount)?;
+            amm_state.base_reserves = amm_state.base_reserves.try_sub(&base_amount)?;
+            amm_state.quote_reserves = amm_state.quote_reserves.try_sub(&quote_amount)?;
 
             AmmStates::<T>::insert(&amm_id, amm_state);
 

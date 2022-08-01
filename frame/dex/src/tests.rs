@@ -344,6 +344,10 @@ fn withdraw_returns_share_of_pool_assets() {
 
         assert_ok!(TestPallet::withdraw(Origin::signed(ALICE), 0, 100 * UNIT));
 
+        assert_eq!(
+            <Assets as Inspect<AccountId>>::balance(DEFAULT_SHARE_ASSET, &ALICE),
+            0
+        );
         assert_eq!(<Assets as Inspect<AccountId>>::balance(DOT, &ALICE), UNIT);
         assert_eq!(
             <Assets as Inspect<AccountId>>::balance(USDC, &ALICE),
@@ -352,6 +356,10 @@ fn withdraw_returns_share_of_pool_assets() {
 
         assert_ok!(TestPallet::withdraw(Origin::signed(BOB), 0, 50 * UNIT));
 
+        assert_eq!(
+            <Assets as Inspect<AccountId>>::balance(DEFAULT_SHARE_ASSET, &BOB),
+            0
+        );
         assert_eq!(<Assets as Inspect<AccountId>>::balance(DOT, &BOB), UNIT / 2);
         assert_eq!(
             <Assets as Inspect<AccountId>>::balance(USDC, &BOB),

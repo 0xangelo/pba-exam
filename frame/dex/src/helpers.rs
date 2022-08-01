@@ -1,5 +1,5 @@
 use sp_runtime::{
-    traits::{CheckedDiv, CheckedMul, CheckedSub, CheckedAdd},
+    traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub},
     ArithmeticError::{self, *},
 };
 
