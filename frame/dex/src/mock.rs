@@ -29,10 +29,10 @@ frame_support::construct_runtime!(
         NodeBlock = Block,
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
-        System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-        Assets: pallet_assets::{Pallet, Call, Storage, Event<T>},
-        Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
-        TestPallet: pallet_dex::{Pallet, Call, Storage, Event<T>},
+        System: frame_system,
+        Assets: pallet_assets,
+        Balances: pallet_balances,
+        TestPallet: pallet_dex,
     }
 );
 
