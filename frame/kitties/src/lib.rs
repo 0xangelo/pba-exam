@@ -10,6 +10,8 @@ pub use pallet::*;
 
 #[frame_support::pallet]
 pub mod pallet {
+    use codec::FullCodec;
+    use frame_support::traits::fungibles::Transfer;
     use frame_support::{
         pallet_prelude::*,
         traits::{tokens::ExistenceRequirement, Currency, Randomness},
@@ -17,7 +19,11 @@ pub mod pallet {
     use frame_system::pallet_prelude::*;
     // use scale_info::TypeInfo;
     use sp_io::hashing::blake2_128;
-    use sp_runtime::ArithmeticError;
+    use sp_runtime::{
+        traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, One, Saturating, Zero},
+        ArithmeticError,
+    };
+    use sp_std::fmt::Debug;
 
     #[cfg(feature = "std")]
     use frame_support::serde::{Deserialize, Serialize};
@@ -54,11 +60,37 @@ pub mod pallet {
     // Configure the pallet by specifying the parameters and types on which it depends.
     #[pallet::config]
     pub trait Config: frame_system::Config {
-        /// Because this pallet emits events, it depends on the runtime's definition of an event.
-        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+        /// The asset identifier type.
+        type AssetId: Clone + Copy + Debug + Decode + Encode + MaxEncodedLen + PartialEq + TypeInfo;
+
+        /// The multiasset mechanism for quoting nfts in different currencies.
+        type Assets: Transfer<Self::AccountId, AssetId = Self::AssetId, Balance = Self::Balance>;
+
+        /// The balance type for this pallet.
+        type Balance: CheckedAdd
+            + CheckedDiv
+            + CheckedMul
+            + CheckedSub
+            + Clone
+            + Copy
+            + Debug
+            + Decode
+            + Encode
+            + From<u64>
+            + FullCodec
+            + MaxEncodedLen
+            + One
+            + Ord
+            + PartialEq
+            + Saturating
+            + TypeInfo
+            + Zero;
 
         /// The Currency handler for the kitties pallet.
         type Currency: Currency<Self::AccountId>;
+
+        /// Because this pallet emits events, it depends on the runtime's definition of an event.
+        type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
         /// The maximum amount of kitties a single account can own.
         #[pallet::constant]

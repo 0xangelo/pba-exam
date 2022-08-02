@@ -1,17 +1,22 @@
 #![cfg(test)]
 
 use crate as pallet_kitties;
-use frame_support::parameter_types;
+use frame_support::{parameter_types, traits::{ConstU32, ConstU64}};
+use pallet_assets::FrozenBalance;
 use pallet_kitties::Gender;
 use sp_core::H256;
 use sp_runtime::{
     testing::Header,
-    traits::{BlakeTwo256, IdentityLookup},
+    traits::{BlakeTwo256, IdentityLookup, Zero},
     BuildStorage,
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
+
+pub type AccountId = u64;
+pub type AssetId = u32;
+pub type Balance = u64;
 
 // Configure a mock runtime to test the pallet.
 frame_support::construct_runtime!(
@@ -21,6 +26,7 @@ frame_support::construct_runtime!(
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
         System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
+        Assets: pallet_assets,
         Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
         RandomnessCollectiveFlip: pallet_randomness_collective_flip::{Pallet, Storage},
         SubstrateKitties: pallet_kitties::{Pallet, Call, Storage, Config<T>, Event<T>},
@@ -34,7 +40,7 @@ parameter_types! {
 
 impl frame_system::Config for Test {
     type AccountData = pallet_balances::AccountData<u64>;
-    type AccountId = u64;
+    type AccountId = AccountId;
     type BaseCallFilter = frame_support::traits::Everything;
     type BlockHashCount = BlockHashCount;
     type BlockLength = ();
@@ -59,13 +65,59 @@ impl frame_system::Config for Test {
     type Version = ();
 }
 
+// -------------------------------------------------------------------------------------------------
+// Copied from https://github.com/paritytech/substrate/blob/master/frame/assets/src/mock.rs
+// -------------------------------------------------------------------------------------------------
+use std::{cell::RefCell, collections::HashMap};
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub(crate) enum Hook {
+    Died(u32, u64),
+}
+thread_local! {
+    static FROZEN: RefCell<HashMap<(u32, u64), u64>> = RefCell::new(Default::default());
+    static HOOKS: RefCell<Vec<Hook>> = RefCell::new(Default::default());
+}
+
+pub struct TestFreezer;
+impl FrozenBalance<u32, u64, u64> for TestFreezer {
+    fn frozen_balance(asset: u32, who: &u64) -> Option<u64> {
+        FROZEN.with(|f| f.borrow().get(&(asset, *who)).cloned())
+    }
+
+    fn died(asset: u32, who: &u64) {
+        HOOKS.with(|h| h.borrow_mut().push(Hook::Died(asset, *who)));
+        // Sanity check: dead accounts have no balance.
+        assert!(Assets::balance(asset, *who).is_zero());
+    }
+}
+
+impl pallet_assets::Config for Test {
+    type Event = Event;
+    type Balance = Balance;
+    type AssetId = AssetId;
+    type Currency = Balances;
+    type ForceOrigin = frame_system::EnsureRoot<AccountId>;
+    type AssetDeposit = ConstU64<1>;
+    type AssetAccountDeposit = ConstU64<10>;
+    type MetadataDepositBase = ConstU64<1>;
+    type MetadataDepositPerByte = ConstU64<1>;
+    type ApprovalDeposit = ConstU64<1>;
+    type StringLimit = ConstU32<50>;
+    type Freezer = TestFreezer;
+    type Extra = ();
+    type WeightInfo = ();
+}
+// -------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------
+
 parameter_types! {
     pub const ExistentialDeposit: u64 = 1;
 }
 
 impl pallet_balances::Config for Test {
     type AccountStore = System;
-    type Balance = u64;
+    type Balance = Balance;
     type DustRemoval = ();
     type Event = Event;
     type ExistentialDeposit = ExistentialDeposit;
@@ -81,8 +133,11 @@ parameter_types! {
 }
 
 impl pallet_kitties::Config for Test {
-    type Event = Event;
+    type AssetId = AssetId;
+    type Assets = Assets;
+    type Balance = Balance;
     type Currency = Balances;
+    type Event = Event;
     type KittyRandomness = RandomnessCollectiveFlip;
     type MaxKittiesOwned = MaxKittiesOwned;
 }
