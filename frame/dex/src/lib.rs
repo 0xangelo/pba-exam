@@ -185,6 +185,15 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
+        /// Create a new AMM.
+        ///
+        /// The caller has to specify:
+        /// - `base_asset`: the asset id of the first one in the pool pair
+        /// - `quote_asset`: the asset id of the second one in the pool pair
+        /// - `share_asset`: the asset id of the liquidity provider token to be created and managed
+        ///   by this AMM
+        /// - `fees_bps`: the share of input asset to be subtracted as fees for liquidity providers
+        ///   in the `swap` extrinsic.
         #[pallet::weight(1_000)]
         pub fn create_amm(
             origin: OriginFor<T>,
@@ -236,6 +245,21 @@ pub mod pallet {
             Ok(())
         }
 
+        /// Provide liquidity to an AMM pool.
+        ///
+        /// The caller must specify the following parameters
+        /// - `amm_id`: the if of the AMM to add assets to
+        /// - `base_amount`: the amount of base asset to add
+        /// - `quote_amount`: the amount of quote asset to add
+        ///
+        /// The caller has to make sure that the ratio of `base_amount` to `quote_amount` matches
+        /// exactly the proportion of these assets in the pool, if it already has liquidity. If the
+        /// caller is the first to provide liquidity, it sets the ratio of these assets and the
+        /// implied invariant.
+        ///
+        /// The pallet mints LP 'shares' as the asset which was created during the call to
+        /// `create_amm`. The asset amount represents the LP's share of the pool's liquidity, which
+        /// accrue rewards through trading fees as traders use the `swap` extrinsic.
         #[pallet::weight(1_000)]
         pub fn provide_liquidity(
             origin: OriginFor<T>,
@@ -303,6 +327,12 @@ pub mod pallet {
             Ok(())
         }
 
+        /// Withdraw liquidity from an AMM's pool.
+        ///
+        /// The caller must specify the following arguments
+        /// - `amm_id`: the id of the AMM
+        /// - `amount`: quantity of LP shares to burn from the caller's account in order to return
+        ///   its corresponding share of the pool's liquidity.
         #[pallet::weight(1_000)]
         pub fn withdraw(
             origin: OriginFor<T>,
@@ -354,6 +384,14 @@ pub mod pallet {
             Ok(())
         }
 
+        /// Swap either token through the AMM.
+        ///
+        /// The caller must specify the following arguments
+        /// - `amm_id`: the id of the AMM to swap against
+        /// - `asset_type`: which of the two asset types in the pool to use as input
+        /// - `input_amount`: amount of input asset to add to the AMM
+        /// - `output_min`: the minimum amount of the opposite asset to get in return. Prevents
+        ///   against slippage.
         #[pallet::weight(1_000)]
         pub fn swap(
             origin: OriginFor<T>,
