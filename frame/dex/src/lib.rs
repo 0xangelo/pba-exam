@@ -3,6 +3,7 @@
 pub use pallet::*;
 
 mod helpers;
+mod types;
 
 #[cfg(test)]
 mod mock;
@@ -12,8 +13,7 @@ mod tests;
 
 #[frame_support::pallet]
 pub mod pallet {
-
-    use crate::helpers::*;
+    use crate::{helpers::*, types::*};
     use codec::FullCodec;
     use frame_support::{
         pallet_prelude::*,
@@ -77,6 +77,7 @@ pub mod pallet {
             + FullCodec
             + MaxEncodedLen
             + One
+            + Ord
             + PartialEq
             + Saturating
             + TypeInfo
@@ -107,20 +108,6 @@ pub mod pallet {
     // ---------------------------------------------------------------------------------------------
     //                                      Storage
     // ---------------------------------------------------------------------------------------------
-
-    /// The state of a particular AMM.
-    #[derive(Encode, Decode, MaxEncodedLen, TypeInfo)]
-    #[scale_info(skip_type_params(T))]
-    #[codec(mel_bound())]
-    pub struct Amm<T: Config> {
-        pub base_asset: T::AssetId,
-        pub base_reserves: T::Balance,
-        pub quote_asset: T::AssetId,
-        pub quote_reserves: T::Balance,
-        pub share_asset: T::AssetId,
-        pub total_shares: T::Balance,
-        pub fees_bps: T::Balance,
-    }
 
     /// Mapping from AMM ids to corresponding states.
     #[pallet::storage]
@@ -158,6 +145,14 @@ pub mod pallet {
             user: T::AccountId,
             shares: T::Balance,
         },
+        /// Emitted when a user swaps against an AMM.
+        Swapped {
+            user: T::AccountId,
+            amm_id: T::AmmId,
+            asset_type: AssetType,
+            input_amount: T::Balance,
+            output_amount: T::Balance,
+        },
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -172,8 +167,16 @@ pub mod pallet {
         InvalidShareAmount,
         /// Raised when failing to create a new asset type for LP shares.
         InvalidShareAsset,
-        /// Raised when trying to provide liquidity with non-equivalent values of the two assets in the pool.
+        /// Raised when trying to provide liquidity with non-equivalent values of the two assets in
+        /// the pool.
         NonEquivalentValue,
+        /// Raised when swap output is below the minimum required by a user.
+        SlippageExceeded,
+        /// Raised when trying to swap a zero amount of asset.
+        ZeroAmount,
+        /// Raised when interacting with an uninitialized AMM while the operation requires
+        /// otherwise.
+        ZeroLiquidity,
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -242,7 +245,7 @@ pub mod pallet {
         ) -> DispatchResult {
             let caller = ensure_signed(origin)?;
 
-            let mut state = Self::amm_state(&amm_id).ok_or(Error::<T>::InvalidAmmId)?;
+            let mut state = Self::try_get_amm_state(&amm_id)?;
 
             let shares = if state.total_shares.is_zero() {
                 let unit: T::Balance = 10_u64
@@ -308,7 +311,7 @@ pub mod pallet {
         ) -> DispatchResult {
             let caller = ensure_signed(origin)?;
 
-            let mut amm_state = Self::amm_state(&amm_id).ok_or(Error::<T>::InvalidAmmId)?;
+            let mut amm_state = Self::try_get_amm_state(&amm_id)?;
 
             T::Assets::burn_from(amm_state.share_asset, &caller, amount)
                 .map_err(|_| Error::<T>::InvalidShareAmount)?;
@@ -350,6 +353,86 @@ pub mod pallet {
 
             Ok(())
         }
+
+        #[pallet::weight(1_000)]
+        pub fn swap(
+            origin: OriginFor<T>,
+            amm_id: T::AmmId,
+            asset_type: AssetType,
+            input_amount: T::Balance,
+            output_min: T::Balance,
+        ) -> DispatchResult {
+            let caller = ensure_signed(origin)?;
+
+            ensure!(!input_amount.is_zero(), Error::<T>::ZeroAmount);
+
+            let mut amm_state = Self::try_get_amm_state(&amm_id)?;
+            ensure!(amm_state.is_initialized()?, Error::<T>::ZeroLiquidity);
+
+            let output_amount = match asset_type {
+                AssetType::Base => {
+                    Self::get_quote_estimate_given_base_amount(&amm_state, input_amount)?
+                }
+                AssetType::Quote => {
+                    Self::get_base_estimate_given_quote_amount(&amm_state, input_amount)?
+                }
+            };
+            ensure!(output_amount > output_min, Error::<T>::SlippageExceeded);
+
+            let amm_account = Self::amm_account(&amm_id);
+            match asset_type {
+                AssetType::Base => {
+                    T::Assets::transfer(
+                        amm_state.base_asset,
+                        &caller,
+                        &amm_account,
+                        input_amount,
+                        false,
+                    )?;
+                    T::Assets::transfer(
+                        amm_state.quote_asset,
+                        &amm_account,
+                        &caller,
+                        output_amount,
+                        false,
+                    )?;
+
+                    amm_state.base_reserves = amm_state.base_reserves.try_add(&input_amount)?;
+                    amm_state.quote_reserves = amm_state.quote_reserves.try_sub(&output_amount)?;
+                }
+                AssetType::Quote => {
+                    T::Assets::transfer(
+                        amm_state.base_asset,
+                        &amm_account,
+                        &caller,
+                        output_amount,
+                        false,
+                    )?;
+                    T::Assets::transfer(
+                        amm_state.quote_asset,
+                        &caller,
+                        &amm_account,
+                        input_amount,
+                        false,
+                    )?;
+
+                    amm_state.base_reserves = amm_state.base_reserves.try_sub(&output_amount)?;
+                    amm_state.quote_reserves = amm_state.quote_reserves.try_add(&input_amount)?;
+                }
+            }
+
+            AmmStates::<T>::insert(&amm_id, amm_state);
+
+            Self::deposit_event(Event::<T>::Swapped {
+                user: caller,
+                amm_id,
+                asset_type,
+                input_amount,
+                output_amount,
+            });
+
+            Ok(())
+        }
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -357,8 +440,56 @@ pub mod pallet {
     // ---------------------------------------------------------------------------------------------
 
     impl<T: Config> Pallet<T> {
+        fn try_get_amm_state(amm_id: &T::AmmId) -> Result<Amm<T>, DispatchError> {
+            Self::amm_state(amm_id).ok_or_else(|| Error::<T>::InvalidAmmId.into())
+        }
+
         fn amm_account(amm_id: &T::AmmId) -> T::AccountId {
             T::PalletId::get().into_sub_account_truncating(amm_id)
+        }
+
+        fn get_base_estimate_given_quote_amount(
+            amm_state: &Amm<T>,
+            amount: T::Balance,
+        ) -> Result<T::Balance, DispatchError> {
+            let full_bps: T::Balance = 10_000_u64.into();
+            let net_amount = full_bps
+                .try_sub(&amm_state.fees_bps)?
+                .try_mul(&amount)?
+                .try_div(&full_bps)?;
+
+            let quote_reserves_after = amm_state.quote_reserves.try_add(&net_amount)?;
+            let base_reserves_after = amm_state.get_k()?.try_div(&quote_reserves_after)?;
+
+            // Ensure reserves are not depleted
+            let mut base_amount = amm_state.base_reserves.try_sub(&base_reserves_after)?;
+            if base_reserves_after.is_zero() {
+                base_amount = base_amount.try_sub(&One::one())?;
+            }
+
+            Ok(base_amount)
+        }
+
+        fn get_quote_estimate_given_base_amount(
+            amm_state: &Amm<T>,
+            amount: T::Balance,
+        ) -> Result<T::Balance, DispatchError> {
+            let full_bps: T::Balance = 10_000_u64.into();
+            let net_amount = full_bps
+                .try_sub(&amm_state.fees_bps)?
+                .try_mul(&amount)?
+                .try_div(&full_bps)?;
+
+            let base_reserves_after = amm_state.base_reserves.try_add(&net_amount)?;
+            let quote_reserves_after = amm_state.get_k()?.try_div(&base_reserves_after)?;
+
+            // Ensure reserves are not depleted
+            let mut quote_amount = amm_state.quote_reserves.try_sub(&quote_reserves_after)?;
+            if quote_reserves_after.is_zero() {
+                quote_amount = quote_amount.try_sub(&One::one())?;
+            }
+
+            Ok(quote_amount)
         }
     }
 }

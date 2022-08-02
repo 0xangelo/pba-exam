@@ -399,3 +399,196 @@ fn withdraw_returns_share_of_pool_assets() {
         assert_eq!(amm_state.quote_reserves, 0);
     })
 }
+
+#[test]
+fn should_not_swap_against_inexistent_amm() {
+    ExtBuilder {
+        accounts: vec![(DOT, ALICE, UNIT), (USDC, ALICE, UNIT * 100)],
+        ..Default::default()
+    }
+    .build()
+    .execute_with(|| {
+        run_to_block(1);
+
+        assert_noop!(
+            TestPallet::swap(Origin::signed(ALICE), 0, AssetType::Quote, UNIT, UNIT / 100,),
+            Error::<Runtime>::InvalidAmmId
+        );
+    })
+}
+
+#[test]
+fn should_not_swap_against_unitialized_amm() {
+    ExtBuilder {
+        accounts: vec![(DOT, ALICE, UNIT), (USDC, ALICE, UNIT * 100)],
+        ..Default::default()
+    }
+    .build()
+    .execute_with(|| {
+        run_to_block(1);
+
+        default_amm();
+
+        assert_noop!(
+            TestPallet::swap(Origin::signed(ALICE), 0, AssetType::Quote, UNIT, UNIT / 100,),
+            Error::<Runtime>::ZeroLiquidity
+        );
+    })
+}
+
+#[test]
+fn swap_quote_returns_base_asset() {
+    ExtBuilder {
+        accounts: vec![
+            (DOT, ALICE, UNIT),
+            (USDC, ALICE, UNIT * 100),
+            (DOT, BOB, UNIT),
+            (USDC, BOB, UNIT * 100),
+        ],
+        ..Default::default()
+    }
+    .build()
+    .execute_with(|| {
+        run_to_block(1);
+
+        default_amm();
+
+        assert_ok!(TestPallet::provide_liquidity(
+            Origin::signed(ALICE),
+            0,
+            UNIT,
+            UNIT * 100,
+        ));
+
+        assert_ok!(TestPallet::swap(
+            Origin::signed(BOB),
+            0,
+            AssetType::Quote,
+            UNIT,
+            UNIT / 102,
+        ));
+
+        assert!(
+            <Assets as Inspect<AccountId>>::balance(DEFAULT_BASE_ASSET, &BOB) < UNIT + UNIT / 100
+        );
+
+        // TODO: assert last event matches Event::<T>::Swapped but without computing exact expected amounts
+    })
+}
+
+#[test]
+fn swap_quote_incurs_slippage() {
+    ExtBuilder {
+        accounts: vec![
+            (DOT, ALICE, UNIT),
+            (USDC, ALICE, UNIT * 100),
+            (DOT, BOB, UNIT),
+            (USDC, BOB, UNIT * 100),
+        ],
+        ..Default::default()
+    }
+    .build()
+    .execute_with(|| {
+        run_to_block(1);
+
+        // No fees, just testing slippage due to x * y = K now.
+        assert_ok!(TestPallet::create_amm(
+            Origin::root(),
+            DOT,
+            USDC,
+            DEFAULT_SHARE_ASSET,
+            0,
+        ));
+
+        assert_ok!(TestPallet::provide_liquidity(
+            Origin::signed(ALICE),
+            0,
+            UNIT,
+            UNIT * 100,
+        ));
+
+        // Current price is 100 USDC / DOT, but due to slippage BOB will get less than that amount.
+        assert_noop!(
+            TestPallet::swap(Origin::signed(BOB), 0, AssetType::Quote, UNIT, UNIT / 100,),
+            Error::<Runtime>::SlippageExceeded
+        );
+    })
+}
+
+#[test]
+fn swap_base_returns_quote_asset() {
+    ExtBuilder {
+        accounts: vec![
+            (DOT, ALICE, UNIT),
+            (USDC, ALICE, UNIT * 100),
+            (DOT, BOB, UNIT),
+            (USDC, BOB, UNIT * 100),
+        ],
+        ..Default::default()
+    }
+    .build()
+    .execute_with(|| {
+        run_to_block(1);
+
+        default_amm();
+
+        assert_ok!(TestPallet::provide_liquidity(
+            Origin::signed(ALICE),
+            0,
+            UNIT,
+            UNIT * 100,
+        ));
+
+        // quote - (k / (base + .5)) ~= 33.3333
+        assert_ok!(TestPallet::swap(
+            Origin::signed(BOB),
+            0,
+            AssetType::Base,
+            UNIT / 2,
+            UNIT * 32
+        ));
+
+        assert!(<Assets as Inspect<AccountId>>::balance(DEFAULT_QUOTE_ASSET, &BOB) < UNIT * 150);
+
+        // TODO: assert last event matches Event::<T>::Swapped but without computing exact expected amounts
+    })
+}
+
+#[test]
+fn swap_base_incurs_slippage() {
+    ExtBuilder {
+        accounts: vec![
+            (DOT, ALICE, UNIT),
+            (USDC, ALICE, UNIT * 100),
+            (DOT, BOB, UNIT),
+            (USDC, BOB, UNIT * 100),
+        ],
+        ..Default::default()
+    }
+    .build()
+    .execute_with(|| {
+        run_to_block(1);
+
+        // No fees, just testing slippage due to x * y = K now.
+        assert_ok!(TestPallet::create_amm(
+            Origin::root(),
+            DOT,
+            USDC,
+            DEFAULT_SHARE_ASSET,
+            0,
+        ));
+
+        assert_ok!(TestPallet::provide_liquidity(
+            Origin::signed(ALICE),
+            0,
+            UNIT,
+            UNIT * 100,
+        ));
+
+        // Current price is 100 USDC / DOT, but due to slippage BOB will get less than expected
+        assert_noop!(
+            TestPallet::swap(Origin::signed(BOB), 0, AssetType::Base, UNIT / 2, UNIT * 50),
+            Error::<Runtime>::SlippageExceeded
+        );
+    })
+}
