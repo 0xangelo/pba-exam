@@ -24,10 +24,13 @@ fn assert_ownership(owner: u64, kitty_id: [u8; 16]) {
 
 #[test]
 fn should_build_genesis_kitties() {
-    new_test_ext(vec![
-        (1, *b"1234567890123456", Gender::Female),
-        (2, *b"123456789012345a", Gender::Male),
-    ])
+    new_test_ext(
+        vec![
+            (1, *b"1234567890123456", Gender::Female),
+            (2, *b"123456789012345a", Gender::Male),
+        ],
+        vec![],
+    )
     .execute_with(|| {
         // Check we have 2 kitties, as specified in genesis
         assert_eq!(CountForKitties::<Test>::get(), 2);
@@ -50,7 +53,7 @@ fn should_build_genesis_kitties() {
 
 #[test]
 fn create_kitty_should_work() {
-    new_test_ext(vec![]).execute_with(|| {
+    new_test_ext(vec![], vec![]).execute_with(|| {
         // Create a kitty with account #10
         assert_ok!(SubstrateKitties::create_kitty(Origin::signed(10)));
 
@@ -73,7 +76,7 @@ fn create_kitty_should_work() {
 #[test]
 fn create_kitty_fails() {
     // Check that create_kitty fails when user owns too many kitties.
-    new_test_ext(vec![]).execute_with(|| {
+    new_test_ext(vec![], vec![]).execute_with(|| {
         // Create `MaxKittiesOwned` kitties with account #10
         for _i in 0..<Test as Config>::MaxKittiesOwned::get() {
             assert_ok!(SubstrateKitties::create_kitty(Origin::signed(10)));
@@ -104,7 +107,7 @@ fn create_kitty_fails() {
 
 #[test]
 fn transfer_kitty_should_work() {
-    new_test_ext(vec![]).execute_with(|| {
+    new_test_ext(vec![], vec![]).execute_with(|| {
         // Account 10 creates a kitty
         assert_ok!(SubstrateKitties::create_kitty(Origin::signed(10)));
         let id = KittiesOwned::<Test>::get(10)[0];
@@ -123,10 +126,13 @@ fn transfer_kitty_should_work() {
 
 #[test]
 fn transfer_kitty_should_fail() {
-    new_test_ext(vec![
-        (1, *b"1234567890123456", Gender::Female),
-        (2, *b"123456789012345a", Gender::Male),
-    ])
+    new_test_ext(
+        vec![
+            (1, *b"1234567890123456", Gender::Female),
+            (2, *b"123456789012345a", Gender::Male),
+        ],
+        vec![],
+    )
     .execute_with(|| {
         // Get the DNA of some kitty
         let dna = KittiesOwned::<Test>::get(1)[0];
@@ -169,7 +175,7 @@ fn transfer_kitty_should_fail() {
 #[test]
 fn breed_kitty_works() {
     // Check that breed kitty works as expected.
-    new_test_ext(vec![(2, *b"123456789012345a", Gender::Male)]).execute_with(|| {
+    new_test_ext(vec![(2, *b"123456789012345a", Gender::Male)], vec![]).execute_with(|| {
         // Get mom and dad kitties from account #1
         let mom = [0u8; 16];
         assert_ok!(SubstrateKitties::mint(&1, mom, Gender::Female));
@@ -210,7 +216,7 @@ fn breed_kitty_works() {
 
 #[test]
 fn breed_kitty_fails() {
-    new_test_ext(vec![]).execute_with(|| {
+    new_test_ext(vec![], vec![]).execute_with(|| {
         // Check that breed_kitty checks opposite gender
         let kitty_1 = [1u8; 16];
         let kitty_2 = [3u8; 16];
@@ -247,7 +253,7 @@ fn breed_kitty_fails() {
 
 #[test]
 fn dna_helpers_work_as_expected() {
-    new_test_ext(vec![]).execute_with(|| {
+    new_test_ext(vec![], vec![]).execute_with(|| {
         // Test gen_dna and other dna functions behave as expected
         // Get two kitty dnas
         let dna_1 = [1u8; 16];
@@ -275,11 +281,14 @@ fn dna_helpers_work_as_expected() {
 
 #[test]
 fn buy_kitty_works() {
-    new_test_ext(vec![
-        (1, *b"1234567890123456", Gender::Female),
-        (2, *b"123456789012345a", Gender::Male),
-        (3, *b"1234567890123451", Gender::Male),
-    ])
+    new_test_ext(
+        vec![
+            (1, *b"1234567890123456", Gender::Female),
+            (2, *b"123456789012345a", Gender::Male),
+            (3, *b"1234567890123451", Gender::Male),
+        ],
+        vec![(DOT, ALICE, UNIT)],
+    )
     .execute_with(|| {
         // Check buy_kitty works as expected
         let id = KittiesOwned::<Test>::get(2)[0];
@@ -291,7 +300,8 @@ fn buy_kitty_works() {
         assert_ok!(SubstrateKitties::set_price(
             Origin::signed(2),
             id,
-            Some(set_price)
+            Some(set_price),
+            Some(DOT),
         ));
 
         // Account #1 can buy account #2's kitty, specifying some limit_price
@@ -320,11 +330,14 @@ fn buy_kitty_works() {
 
 #[test]
 fn buy_kitty_fails() {
-    new_test_ext(vec![
-        (1, *b"1234567890123456", Gender::Female),
-        (2, *b"123456789012345a", Gender::Male),
-        (10, *b"1234567890123410", Gender::Male),
-    ])
+    new_test_ext(
+        vec![
+            (1, *b"1234567890123456", Gender::Female),
+            (2, *b"123456789012345a", Gender::Male),
+            (10, *b"1234567890123410", Gender::Male),
+        ],
+        vec![(DOT, ALICE, UNIT), (DOT, BOB, UNIT * 10)],
+    )
     .execute_with(|| {
         // Check buy_kitty fails when kitty is not for sale
         let id = KittiesOwned::<Test>::get(1)[0];
@@ -341,7 +354,8 @@ fn buy_kitty_fails() {
         assert_ok!(SubstrateKitties::set_price(
             Origin::signed(2),
             id,
-            Some(set_price)
+            Some(set_price),
+            Some(DOT),
         ));
 
         // Account #10 can't buy this kitty for half the asking price
@@ -358,7 +372,8 @@ fn buy_kitty_fails() {
         assert_ok!(SubstrateKitties::set_price(
             Origin::signed(2),
             id,
-            Some(balance_of_account_10 * 10)
+            Some(balance_of_account_10 * 10),
+            Some(DOT),
         ));
 
         // Account 10 can't buy a kitty they can't afford
@@ -371,10 +386,13 @@ fn buy_kitty_fails() {
 
 #[test]
 fn set_price_works() {
-    new_test_ext(vec![
-        (1, *b"1234567890123456", Gender::Female),
-        (2, *b"123456789012345a", Gender::Male),
-    ])
+    new_test_ext(
+        vec![
+            (1, *b"1234567890123456", Gender::Female),
+            (2, *b"123456789012345a", Gender::Male),
+        ],
+        vec![(DOT, ALICE, UNIT), (DOT, BOB, UNIT * 10)],
+    )
     .execute_with(|| {
         // Check set_price works as expected
         let id = KittiesOwned::<Test>::get(2)[0];
@@ -382,19 +400,20 @@ fn set_price_works() {
         assert_ok!(SubstrateKitties::set_price(
             Origin::signed(2),
             id,
-            Some(set_price)
+            Some(set_price),
+            Some(DOT)
         ));
 
         // Only owner can set price
         assert_noop!(
-            SubstrateKitties::set_price(Origin::signed(1), id, Some(set_price)),
+            SubstrateKitties::set_price(Origin::signed(1), id, Some(set_price), Some(DOT)),
             Error::<Test>::NotOwner
         );
 
         // Kitty must exist too
         let non_dna = [2u8; 16];
         assert_noop!(
-            SubstrateKitties::set_price(Origin::signed(1), non_dna, Some(set_price)),
+            SubstrateKitties::set_price(Origin::signed(1), non_dna, Some(set_price), Some(DOT)),
             Error::<Test>::NoKitty
         );
     });

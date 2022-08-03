@@ -1,7 +1,10 @@
 #![cfg(test)]
 
 use crate as pallet_kitties;
-use frame_support::{parameter_types, traits::{ConstU32, ConstU64}};
+use frame_support::{
+    parameter_types,
+    traits::{ConstU32, ConstU64, GenesisBuild},
+};
 use pallet_assets::FrozenBalance;
 use pallet_kitties::Gender;
 use sp_core::H256;
@@ -144,10 +147,22 @@ impl pallet_kitties::Config for Test {
 
 impl pallet_randomness_collective_flip::Config for Test {}
 
-pub(crate) fn new_test_ext(users: Vec<(u64, [u8; 16], Gender)>) -> sp_io::TestExternalities {
+pub const DEFAULT_DECIMALS: u8 = 6;
+pub const ALICE: AccountId = 1;
+pub const BOB: AccountId = 2;
+pub const DOT: AssetId = 0;
+pub const USDC: AssetId = 1;
+pub const KSM: AssetId = 2;
+pub const UNIT: Balance = 10_u64.pow(DEFAULT_DECIMALS as u32) as Balance;
+
+pub(crate) fn new_test_ext(
+    users: Vec<(u64, [u8; 16], Gender)>,
+    accounts: Vec<(AssetId, AccountId, Balance)>,
+) -> sp_io::TestExternalities {
     let mut t = frame_system::GenesisConfig::default()
         .build_storage::<Test>()
         .unwrap();
+
     GenesisConfig {
         //
         balances: BalancesConfig {
@@ -160,6 +175,29 @@ pub(crate) fn new_test_ext(users: Vec<(u64, [u8; 16], Gender)>) -> sp_io::TestEx
                 .collect(),
         },
         ..Default::default()
+    }
+    .assimilate_storage(&mut t)
+    .unwrap();
+
+    pallet_assets::GenesisConfig::<Test> {
+        accounts,
+        // Hardcode assets and metadata temporarily
+        assets: vec![(0, 0, true, 1), (1, 0, true, 1), (2, 0, true, 1)],
+        metadata: vec![
+            (
+                DOT,
+                (*b"Polkadot").into(),
+                (*b"DOT").into(),
+                DEFAULT_DECIMALS,
+            ),
+            (
+                USDC,
+                (*b"USD Coin").into(),
+                (*b"USDC").into(),
+                DEFAULT_DECIMALS,
+            ),
+            (KSM, (*b"Kusama").into(), (*b"KSM").into(), DEFAULT_DECIMALS),
+        ],
     }
     .assimilate_storage(&mut t)
     .unwrap();

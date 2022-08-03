@@ -38,6 +38,7 @@ pub mod pallet {
     pub struct Kitty<T: Config> {
         // Using 16 bytes to represent a kitty DNA
         pub dna: [u8; 16],
+        pub quote_asset: Option<T::AssetId>,
         // `None` assumes not for sale
         pub price: Option<BalanceOf<T>>,
         pub gender: Gender,
@@ -61,7 +62,15 @@ pub mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         /// The asset identifier type.
-        type AssetId: Clone + Copy + Debug + Decode + Encode + MaxEncodedLen + PartialEq + TypeInfo;
+        type AssetId: Clone
+            + Copy
+            + Debug
+            + Decode
+            + Encode
+            + MaxEncodedLen
+            + PartialEq
+            + TypeInfo
+			+ MaybeSerializeDeserialize;
 
         /// The multiasset mechanism for quoting nfts in different currencies.
         type Assets: Transfer<Self::AccountId, AssetId = Self::AssetId, Balance = Self::Balance>;
@@ -119,6 +128,8 @@ pub mod pallet {
         BidPriceTooLow,
         /// You need to have two cats with different gender to breed.
         CantBreed,
+        /// Can't set the price without an associated quote asset id.
+        InvalidPrice,
     }
 
     // Events
@@ -284,12 +295,14 @@ pub mod pallet {
 
         /// Set the price for a kitty.
         ///
-        /// Updates kitty price and updates storage.
+        /// Updates kitty price and updates storage. This sets the asset used to quote the price of
+        /// the kitty.
         #[pallet::weight(0)]
         pub fn set_price(
             origin: OriginFor<T>,
             kitty_id: [u8; 16],
             new_price: Option<BalanceOf<T>>,
+            new_quote_asset: Option<T::AssetId>,
         ) -> DispatchResult {
             // Make sure the caller is from a signed origin
             let sender = ensure_signed(origin)?;
@@ -299,7 +312,9 @@ pub mod pallet {
             ensure!(kitty.owner == sender, Error::<T>::NotOwner);
 
             // Set the price in storage
+            ensure!(new_price.is_some() == new_quote_asset.is_some(), Error::<T>::InvalidPrice);
             kitty.price = new_price;
+            kitty.quote_asset = new_quote_asset;
             Kitties::<T>::insert(&kitty_id, kitty);
 
             // Deposit a "PriceSet" event.
@@ -379,6 +394,7 @@ pub mod pallet {
             // Create a new object
             let kitty = Kitty::<T> {
                 dna,
+                quote_asset: None,
                 price: None,
                 gender,
                 owner: owner.clone(),
