@@ -28,7 +28,7 @@ impl<T: Config> Amm<T> {
 }
 
 /// For indicating the input to swaps
-#[derive(Clone, Debug, Decode, Encode, MaxEncodedLen, PartialEq, Eq, TypeInfo)]
+#[derive(Clone, Copy, Debug, Decode, Encode, MaxEncodedLen, PartialEq, Eq, TypeInfo)]
 pub enum AssetType {
     Base,
     Quote,

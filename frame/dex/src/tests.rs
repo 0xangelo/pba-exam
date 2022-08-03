@@ -603,7 +603,7 @@ fn should_accrue_rewards_to_liquidity_providers() {
             (USDC, ALICE, UNIT * 100),
             (DOT, BOB, UNIT / 2),
             (USDC, BOB, UNIT * 50),
-            (USDC, CHARLIE, UNIT * 10)
+            (USDC, CHARLIE, UNIT * 10),
         ],
         ..Default::default()
     }
@@ -651,11 +651,7 @@ fn should_accrue_rewards_to_liquidity_providers() {
         assert!(amm_state.quote_reserves > UNIT * 150);
 
         // Bob withdraws his shares and realizes his rewards
-        assert_ok!(TestPallet::withdraw(
-            Origin::signed(BOB),
-            0,
-            50 * UNIT
-        ));
+        assert_ok!(TestPallet::withdraw(Origin::signed(BOB), 0, 50 * UNIT));
         assert_eq!(<Assets as Inspect<AccountId>>::balance(DOT, &BOB), UNIT / 2);
         assert!(<Assets as Inspect<AccountId>>::balance(USDC, &BOB) > UNIT * 50);
     })

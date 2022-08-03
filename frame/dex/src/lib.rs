@@ -3,6 +3,7 @@
 pub use pallet::*;
 
 mod helpers;
+mod traits;
 mod types;
 
 #[cfg(test)]
@@ -13,7 +14,7 @@ mod tests;
 
 #[frame_support::pallet]
 pub mod pallet {
-    use crate::{helpers::*, types::*};
+    use crate::{helpers::*, traits::SimulateSwap, types::*};
     use codec::FullCodec;
     use frame_support::{
         pallet_prelude::*,
@@ -404,14 +405,7 @@ pub mod pallet {
             let mut amm_state = Self::try_get_amm_state(&amm_id)?;
             ensure!(amm_state.is_initialized()?, Error::<T>::ZeroLiquidity);
 
-            let output_amount = match asset_type {
-                AssetType::Base => {
-                    Self::get_quote_estimate_given_base_amount(&amm_state, input_amount)?
-                }
-                AssetType::Quote => {
-                    Self::get_base_estimate_given_quote_amount(&amm_state, input_amount)?
-                }
-            };
+            let output_amount = <Self as SimulateSwap>::simulate_swap(amm_id, asset_type, input_amount)?;
             ensure!(output_amount > output_min, Error::<T>::SlippageExceeded);
 
             let amm_account = Self::amm_account(&amm_id);
@@ -471,6 +465,53 @@ pub mod pallet {
     }
 
     // ---------------------------------------------------------------------------------------------
+    //                                      Trait Impls
+    // ---------------------------------------------------------------------------------------------
+
+    impl<T:Config> SimulateSwap for Pallet<T> {
+        type AmmId = T::AmmId;
+        type AssetType = AssetType;
+        type Balance = T::Balance;
+
+        fn simulate_swap(
+            amm_id: Self::AmmId,
+            asset_type: Self::AssetType,
+            amount: Self::Balance,
+        ) -> Result<Self::Balance, DispatchError> {
+            let amm_state = Self::try_get_amm_state(&amm_id)?;
+
+            let full_bps: T::Balance = 10_000_u64.into();
+            let net_amount = full_bps
+                .try_sub(&amm_state.fees_bps)?
+                .try_mul(&amount)?
+                .try_div(&full_bps)?;
+
+            let (output_reserves_before, output_reserves_after) = match asset_type {
+                AssetType::Base => {
+                    let base_reserves_after = amm_state.base_reserves.try_add(&net_amount)?;
+                    let quote_reserves_after = amm_state.get_k()?.try_div(&base_reserves_after)?;
+
+                    (amm_state.quote_reserves, quote_reserves_after)
+                },
+                AssetType::Quote => {
+                    let quote_reserves_after = amm_state.quote_reserves.try_add(&net_amount)?;
+                    let base_reserves_after = amm_state.get_k()?.try_div(&quote_reserves_after)?;
+
+                    (amm_state.base_reserves, base_reserves_after)
+                }
+            };
+
+            // Ensure reserves are not depleted
+            let mut output_amount = output_reserves_before.try_sub(&output_reserves_after)?;
+            if output_reserves_after.is_zero() {
+                output_amount = output_amount.try_sub(&One::one())?;
+            }
+
+            Ok(output_amount)
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------
     //                                      Helpers
     // ---------------------------------------------------------------------------------------------
 
@@ -481,50 +522,6 @@ pub mod pallet {
 
         fn amm_account(amm_id: &T::AmmId) -> T::AccountId {
             T::PalletId::get().into_sub_account_truncating(amm_id)
-        }
-
-        fn get_base_estimate_given_quote_amount(
-            amm_state: &Amm<T>,
-            amount: T::Balance,
-        ) -> Result<T::Balance, DispatchError> {
-            let full_bps: T::Balance = 10_000_u64.into();
-            let net_amount = full_bps
-                .try_sub(&amm_state.fees_bps)?
-                .try_mul(&amount)?
-                .try_div(&full_bps)?;
-
-            let quote_reserves_after = amm_state.quote_reserves.try_add(&net_amount)?;
-            let base_reserves_after = amm_state.get_k()?.try_div(&quote_reserves_after)?;
-
-            // Ensure reserves are not depleted
-            let mut base_amount = amm_state.base_reserves.try_sub(&base_reserves_after)?;
-            if base_reserves_after.is_zero() {
-                base_amount = base_amount.try_sub(&One::one())?;
-            }
-
-            Ok(base_amount)
-        }
-
-        fn get_quote_estimate_given_base_amount(
-            amm_state: &Amm<T>,
-            amount: T::Balance,
-        ) -> Result<T::Balance, DispatchError> {
-            let full_bps: T::Balance = 10_000_u64.into();
-            let net_amount = full_bps
-                .try_sub(&amm_state.fees_bps)?
-                .try_mul(&amount)?
-                .try_div(&full_bps)?;
-
-            let base_reserves_after = amm_state.base_reserves.try_add(&net_amount)?;
-            let quote_reserves_after = amm_state.get_k()?.try_div(&base_reserves_after)?;
-
-            // Ensure reserves are not depleted
-            let mut quote_amount = amm_state.quote_reserves.try_sub(&quote_reserves_after)?;
-            if quote_reserves_after.is_zero() {
-                quote_amount = quote_amount.try_sub(&One::one())?;
-            }
-
-            Ok(quote_amount)
         }
     }
 }
