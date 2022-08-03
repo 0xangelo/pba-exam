@@ -180,6 +180,18 @@ fn testnet_genesis(
                 .iter()
                 .cloned()
                 .map(|k| (0, k, 10u128.pow(9u32)))
+                .chain(
+                    endowed_accounts
+                        .iter()
+                        .cloned()
+                        .map(|k| (1, k, 10u128.pow(9u32))),
+                )
+                .chain(
+                    endowed_accounts
+                        .iter()
+                        .cloned()
+                        .map(|k| (2, k, 10u128.pow(9u32))),
+                )
                 .collect(),
         },
         kitties: KittiesConfig::default(),
