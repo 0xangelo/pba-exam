@@ -300,8 +300,7 @@ fn buy_kitty_works() {
         assert_ok!(SubstrateKitties::set_price(
             Origin::signed(2),
             id,
-            Some(set_price),
-            Some(DOT),
+            Some((set_price, DOT)),
         ));
 
         // Account #1 can buy account #2's kitty, specifying some limit_price
@@ -354,8 +353,7 @@ fn buy_kitty_fails() {
         assert_ok!(SubstrateKitties::set_price(
             Origin::signed(2),
             id,
-            Some(set_price),
-            Some(DOT),
+            Some((set_price, DOT)),
         ));
 
         // Account #10 can't buy this kitty for half the asking price
@@ -372,8 +370,7 @@ fn buy_kitty_fails() {
         assert_ok!(SubstrateKitties::set_price(
             Origin::signed(2),
             id,
-            Some(balance_of_account_10 * 10),
-            Some(DOT),
+            Some((balance_of_account_10 * 10, DOT)),
         ));
 
         // Account 10 can't buy a kitty they can't afford
@@ -400,20 +397,19 @@ fn set_price_works() {
         assert_ok!(SubstrateKitties::set_price(
             Origin::signed(2),
             id,
-            Some(set_price),
-            Some(DOT)
+            Some((set_price, DOT)),
         ));
 
         // Only owner can set price
         assert_noop!(
-            SubstrateKitties::set_price(Origin::signed(1), id, Some(set_price), Some(DOT)),
+            SubstrateKitties::set_price(Origin::signed(1), id, Some((set_price, DOT))),
             Error::<Test>::NotOwner
         );
 
         // Kitty must exist too
         let non_dna = [2u8; 16];
         assert_noop!(
-            SubstrateKitties::set_price(Origin::signed(1), non_dna, Some(set_price), Some(DOT)),
+            SubstrateKitties::set_price(Origin::signed(1), non_dna, Some((set_price, DOT))),
             Error::<Test>::NoKitty
         );
     });

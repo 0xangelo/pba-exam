@@ -128,8 +128,6 @@ pub mod pallet {
         BidPriceTooLow,
         /// You need to have two cats with different gender to breed.
         CantBreed,
-        /// Can't set the price without an associated quote asset id.
-        InvalidPrice,
     }
 
     // Events
@@ -301,8 +299,7 @@ pub mod pallet {
         pub fn set_price(
             origin: OriginFor<T>,
             kitty_id: [u8; 16],
-            new_price: Option<BalanceOf<T>>,
-            new_quote_asset: Option<T::AssetId>,
+            new_price: Option<(BalanceOf<T>, T::AssetId)>,
         ) -> DispatchResult {
             // Make sure the caller is from a signed origin
             let sender = ensure_signed(origin)?;
@@ -312,7 +309,11 @@ pub mod pallet {
             ensure!(kitty.owner == sender, Error::<T>::NotOwner);
 
             // Set the price in storage
-            ensure!(new_price.is_some() == new_quote_asset.is_some(), Error::<T>::InvalidPrice);
+            let (new_price, new_quote_asset) = if let Some((new_p, new_q)) = new_price {
+                (Some(new_p), Some(new_q))
+            } else {
+                (None, None)
+            };
             kitty.price = new_price;
             kitty.quote_asset = new_quote_asset;
             Kitties::<T>::insert(&kitty_id, kitty);
