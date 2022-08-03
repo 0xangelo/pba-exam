@@ -2,7 +2,6 @@
 members = [
     "frame/dex",
     "frame/kitties",
-    "frame/nft",
     "node",
     "runtime",
 ]

@@ -439,7 +439,7 @@ fn can_use_dex_to_obtain_token_for_kitty_purchase() {
     )
     .execute_with(|| {
         assert_ok!(Dex::create_amm(
-            Origin::root(),
+            Origin::signed(CHARLIE),
             DOT,
             USDC,
             DEFAULT_SHARE_ASSET,

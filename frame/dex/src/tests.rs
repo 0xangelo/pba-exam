@@ -80,11 +80,11 @@ fn ext_builder_works() {
 }
 
 #[test]
-fn only_root_can_create_amm() {
+fn anyone_can_create_amm() {
     new_test_ext().execute_with(|| {
         assert_noop!(
             TestPallet::create_amm(
-                Origin::signed(ALICE),
+                Origin::root(),
                 DEFAULT_BASE_ASSET,
                 DEFAULT_QUOTE_ASSET,
                 DEFAULT_SHARE_ASSET,
@@ -94,7 +94,7 @@ fn only_root_can_create_amm() {
         );
 
         assert_ok!(TestPallet::create_amm(
-            Origin::root(),
+            Origin::signed(ALICE),
             DEFAULT_BASE_ASSET,
             DEFAULT_QUOTE_ASSET,
             DEFAULT_SHARE_ASSET,
@@ -109,7 +109,7 @@ fn create_amm_increments_amm_counter() {
         let before = TestPallet::amm_count();
 
         assert_ok!(TestPallet::create_amm(
-            Origin::root(),
+            Origin::signed(ALICE),
             DEFAULT_BASE_ASSET,
             DEFAULT_QUOTE_ASSET,
             DEFAULT_SHARE_ASSET,
@@ -143,7 +143,7 @@ fn cant_create_amm_with_existing_lp_asset() {
 
         assert_noop!(
             TestPallet::create_amm(
-                Origin::root(),
+                Origin::signed(ALICE),
                 DEFAULT_BASE_ASSET,
                 DEFAULT_QUOTE_ASSET,
                 DEFAULT_SHARE_ASSET,
@@ -181,7 +181,7 @@ fn cant_create_amm_with_existing_lp_asset() {
 
 fn default_amm() {
     assert_ok!(TestPallet::create_amm(
-        Origin::root(),
+        Origin::signed(ALICE),
         DOT,
         USDC,
         DEFAULT_SHARE_ASSET,
@@ -495,7 +495,7 @@ fn swap_quote_incurs_slippage() {
 
         // No fees, just testing slippage due to x * y = K now.
         assert_ok!(TestPallet::create_amm(
-            Origin::root(),
+            Origin::signed(ALICE),
             DOT,
             USDC,
             DEFAULT_SHARE_ASSET,
@@ -573,7 +573,7 @@ fn swap_base_incurs_slippage() {
 
         // No fees, just testing slippage due to x * y = K now.
         assert_ok!(TestPallet::create_amm(
-            Origin::root(),
+            Origin::signed(ALICE),
             DOT,
             USDC,
             DEFAULT_SHARE_ASSET,

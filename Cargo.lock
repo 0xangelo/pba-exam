@@ -3702,10 +3702,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nft"
-version = "0.1.0"
-
-[[package]]
 name = "nix"
 version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3770,9 +3766,12 @@ dependencies = [
  "frame-system-rpc-runtime-api",
  "frame-try-runtime",
  "hex-literal",
+ "pallet-assets",
  "pallet-aura",
  "pallet-balances",
+ "pallet-dex",
  "pallet-grandpa",
+ "pallet-kitties",
  "pallet-randomness-collective-flip",
  "pallet-sudo",
  "pallet-timestamp",

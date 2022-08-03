@@ -202,7 +202,7 @@ pub mod pallet {
             share_asset: T::AssetId,
             fees_bps: T::Balance,
         ) -> DispatchResult {
-            ensure_root(origin)?;
+            ensure_signed(origin)?;
 
             let amm_id = Self::amm_count();
             let amm_state = Amm {

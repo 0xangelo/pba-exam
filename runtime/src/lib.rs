@@ -6,6 +6,8 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+use frame_support::PalletId;
+use frame_system::EnsureRoot;
 use pallet_grandpa::{
 	fg_primitives, AuthorityId as GrandpaId, AuthorityList as GrandpaAuthorityList,
 };
@@ -259,6 +261,85 @@ impl pallet_sudo::Config for Runtime {
 	type Call = Call;
 }
 
+// -------------------------------------------------------------------------------------------------
+//                                          Assets
+// Copied from 'substrate/bin/node/runtime/src/lib.rs'
+// -------------------------------------------------------------------------------------------------
+
+pub const MILLICENTS: Balance = 1_000_000_000;
+pub const CENTS: Balance = 1_000 * MILLICENTS; // assume this is worth about a cent.
+pub const DOLLARS: Balance = 100 * CENTS;
+
+pub type AssetId = u32;
+
+parameter_types! {
+	pub const AssetDeposit: Balance = 100 * DOLLARS;
+	pub const ApprovalDeposit: Balance = 1 * DOLLARS;
+	pub const StringLimit: u32 = 50;
+	pub const MetadataDepositBase: Balance = 10 * DOLLARS;
+	pub const MetadataDepositPerByte: Balance = 1 * DOLLARS;
+}
+
+impl pallet_assets::Config for Runtime {
+	type Event = Event;
+	type Balance = Balance;
+	type AssetId = AssetId;
+	type Currency = Balances;
+	type ForceOrigin = EnsureRoot<AccountId>;
+	type AssetDeposit = AssetDeposit;
+	type AssetAccountDeposit = ConstU128<DOLLARS>;
+	type MetadataDepositBase = MetadataDepositBase;
+	type MetadataDepositPerByte = MetadataDepositPerByte;
+	type ApprovalDeposit = ApprovalDeposit;
+	type StringLimit = StringLimit;
+	type Freezer = ();
+	type Extra = ();
+	type WeightInfo = pallet_assets::weights::SubstrateWeight<Runtime>;
+}
+
+// -------------------------------------------------------------------------------------------------
+//                                          DEX
+// -------------------------------------------------------------------------------------------------
+
+pub type AmmId = u32;
+
+parameter_types! {
+    pub const TestPalletId: PalletId = PalletId(*b"test_pid");
+    pub const DefaultDecimals: u8 = 6;
+}
+
+impl pallet_dex::Config for Runtime {
+    type AmmId = AmmId;
+    type AssetId = AssetId;
+    type Assets = Assets;
+    type Balance = Balance;
+    type DefaultDecimals = DefaultDecimals;
+    type Event = Event;
+    type PalletId = TestPalletId;
+}
+
+// -------------------------------------------------------------------------------------------------
+//                                          Kitties
+// -------------------------------------------------------------------------------------------------
+
+parameter_types! {
+    // One can owned at most 9,999 Kitties
+    pub const MaxKittiesOwned: u32 = 9999;
+}
+
+impl pallet_kitties::Config for Runtime {
+    type AssetId = AssetId;
+    type Assets = Assets;
+    type Balance = Balance;
+    type Event = Event;
+    type KittyRandomness = RandomnessCollectiveFlip;
+    type MaxKittiesOwned = MaxKittiesOwned;
+}
+
+// -------------------------------------------------------------------------------------------------
+//                                          Runtime
+// -------------------------------------------------------------------------------------------------
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
 	pub enum Runtime where
@@ -274,6 +355,10 @@ construct_runtime!(
 		Balances: pallet_balances,
 		TransactionPayment: pallet_transaction_payment,
 		Sudo: pallet_sudo,
+		// Added for exam
+		Assets: pallet_assets,
+		Dex: pallet_dex,
+		Kitties: pallet_kitties,
 	}
 );
 
