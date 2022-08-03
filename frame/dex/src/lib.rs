@@ -28,7 +28,7 @@ pub mod pallet {
             AccountIdConversion, CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, One, Saturating,
             Zero,
         },
-        ArithmeticError, FixedPointNumber,
+        ArithmeticError,
     };
     use sp_std::fmt::Debug;
 
@@ -82,9 +82,6 @@ pub mod pallet {
             + Saturating
             + TypeInfo
             + Zero;
-
-        /// Type of unsigned fixed point number used for internal calculations.
-        type Decimal: FixedPointNumber;
 
         /// Default number of decimal digits for AMM share asset.
         type DefaultDecimals: Get<u8>;

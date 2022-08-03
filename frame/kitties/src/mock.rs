@@ -11,7 +11,7 @@ use sp_core::H256;
 use sp_runtime::{
     testing::Header,
     traits::{BlakeTwo256, IdentityLookup, Zero},
-    BuildStorage, FixedU128,
+    BuildStorage,
 };
 
 // -------------------------------------------------------------------------------------------------
@@ -162,7 +162,6 @@ impl pallet_dex::Config for Test {
     type AssetId = AssetId;
     type Assets = Assets;
     type Balance = Balance;
-    type Decimal = FixedU128;
     type DefaultDecimals = DefaultDecimals;
     type Event = Event;
     type PalletId = TestPalletId;

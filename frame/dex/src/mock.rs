@@ -10,7 +10,6 @@ use sp_core::H256;
 use sp_runtime::{
     testing::Header,
     traits::{BlakeTwo256, IdentityLookup, Zero},
-    FixedU128,
 };
 
 pub const DEFAULT_DECIMALS: u8 = 6;
@@ -131,7 +130,6 @@ impl pallet_dex::Config for Runtime {
     type AssetId = AssetId;
     type Assets = Assets;
     type Balance = Balance;
-    type Decimal = FixedU128;
     type DefaultDecimals = DefaultDecimals;
     type Event = Event;
     type PalletId = TestPalletId;
