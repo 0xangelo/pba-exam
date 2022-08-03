@@ -38,9 +38,8 @@ pub mod pallet {
     pub struct Kitty<T: Config> {
         // Using 16 bytes to represent a kitty DNA
         pub dna: [u8; 16],
-        pub quote_asset: Option<T::AssetId>,
-        // `None` assumes not for sale
-        pub price: Option<BalanceOf<T>>,
+        // `None` implies not for sale
+        pub price: Option<(BalanceOf<T>, T::AssetId)>,
         pub gender: Gender,
         pub owner: T::AccountId,
     }
@@ -142,7 +141,7 @@ pub mod pallet {
         /// The price of a kitty was successfully set.
         PriceSet {
             kitty: [u8; 16],
-            price: Option<BalanceOf<T>>,
+            price: Option<(BalanceOf<T>, T::AssetId)>,
         },
         /// A kitty was successfully transferred.
         Transferred {
@@ -309,13 +308,7 @@ pub mod pallet {
             ensure!(kitty.owner == sender, Error::<T>::NotOwner);
 
             // Set the price in storage
-            let (new_price, new_quote_asset) = if let Some((new_p, new_q)) = new_price {
-                (Some(new_p), Some(new_q))
-            } else {
-                (None, None)
-            };
             kitty.price = new_price;
-            kitty.quote_asset = new_quote_asset;
             Kitties::<T>::insert(&kitty_id, kitty);
 
             // Deposit a "PriceSet" event.
@@ -395,7 +388,6 @@ pub mod pallet {
             // Create a new object
             let kitty = Kitty::<T> {
                 dna,
-                quote_asset: None,
                 price: None,
                 gender,
                 owner: owner.clone(),
@@ -460,7 +452,7 @@ pub mod pallet {
             // protection so the seller isn't able to front-run the transaction.
             if let Some(limit_price) = maybe_limit_price {
                 // Current kitty price if for sale
-                if let Some(price) = kitty.price {
+                if let Some((price, _)) = kitty.price {
                     ensure!(limit_price >= price, Error::<T>::BidPriceTooLow);
                     // Transfer the amount from buyer to seller
                     T::Currency::transfer(&to, &from, price, ExistenceRequirement::KeepAlive)?;
