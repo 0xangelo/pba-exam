@@ -334,7 +334,11 @@ fn buy_kitty_fails() {
             (BOB, *b"123456789012345a", Gender::Male),
             (CHARLIE, *b"1234567890123410", Gender::Male),
         ],
-        vec![(DOT, ALICE, UNIT), (DOT, BOB, UNIT * 10), (DOT, CHARLIE, UNIT / 2)],
+        vec![
+            (DOT, ALICE, UNIT),
+            (DOT, BOB, UNIT * 10),
+            (DOT, CHARLIE, UNIT / 2),
+        ],
     )
     .execute_with(|| {
         // Check buy_kitty fails when kitty is not for sale

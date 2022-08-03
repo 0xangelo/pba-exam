@@ -12,10 +12,7 @@ pub use pallet::*;
 pub mod pallet {
     use codec::FullCodec;
     use frame_support::traits::fungibles::Transfer;
-    use frame_support::{
-        pallet_prelude::*,
-        traits::{Currency, Randomness},
-    };
+    use frame_support::{pallet_prelude::*, traits::Randomness};
     use frame_system::pallet_prelude::*;
     // use scale_info::TypeInfo;
     use sp_io::hashing::blake2_128;
@@ -28,9 +25,6 @@ pub mod pallet {
     #[cfg(feature = "std")]
     use frame_support::serde::{Deserialize, Serialize};
 
-    // Handles our pallet's currency abstraction
-    type BalanceOf<T> = <T as Config>::Balance;
-
     // Struct for holding kitty information
     #[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
@@ -38,7 +32,7 @@ pub mod pallet {
         // Using 16 bytes to represent a kitty DNA
         pub dna: [u8; 16],
         // `None` implies not for sale
-        pub price: Option<(BalanceOf<T>, T::AssetId)>,
+        pub price: Option<(T::Balance, T::AssetId)>,
         pub gender: Gender,
         pub owner: T::AccountId,
     }
@@ -68,7 +62,7 @@ pub mod pallet {
             + MaxEncodedLen
             + PartialEq
             + TypeInfo
-			+ MaybeSerializeDeserialize;
+            + MaybeSerializeDeserialize;
 
         /// The multiasset mechanism for quoting nfts in different currencies.
         type Assets: Transfer<Self::AccountId, AssetId = Self::AssetId, Balance = Self::Balance>;
@@ -92,9 +86,6 @@ pub mod pallet {
             + Saturating
             + TypeInfo
             + Zero;
-
-        /// The Currency handler for the kitties pallet.
-        type Currency: Currency<Self::AccountId>;
 
         /// Because this pallet emits events, it depends on the runtime's definition of an event.
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
@@ -140,7 +131,7 @@ pub mod pallet {
         /// The price of a kitty was successfully set.
         PriceSet {
             kitty: [u8; 16],
-            price: Option<(BalanceOf<T>, T::AssetId)>,
+            price: Option<(T::Balance, T::AssetId)>,
         },
         /// A kitty was successfully transferred.
         Transferred {
@@ -153,7 +144,7 @@ pub mod pallet {
             seller: T::AccountId,
             buyer: T::AccountId,
             kitty: [u8; 16],
-            price: (BalanceOf<T>, T::AssetId),
+            price: (T::Balance, T::AssetId),
         },
     }
 
@@ -279,7 +270,7 @@ pub mod pallet {
         pub fn buy_kitty(
             origin: OriginFor<T>,
             kitty_id: [u8; 16],
-            limit_price: BalanceOf<T>,
+            limit_price: T::Balance,
         ) -> DispatchResult {
             // Make sure the caller is from a signed origin
             let buyer = ensure_signed(origin)?;
@@ -297,7 +288,7 @@ pub mod pallet {
         pub fn set_price(
             origin: OriginFor<T>,
             kitty_id: [u8; 16],
-            new_price: Option<(BalanceOf<T>, T::AssetId)>,
+            new_price: Option<(T::Balance, T::AssetId)>,
         ) -> DispatchResult {
             // Make sure the caller is from a signed origin
             let sender = ensure_signed(origin)?;
@@ -424,7 +415,7 @@ pub mod pallet {
         pub fn do_transfer(
             kitty_id: [u8; 16],
             to: T::AccountId,
-            maybe_limit_price: Option<BalanceOf<T>>,
+            maybe_limit_price: Option<T::Balance>,
         ) -> DispatchResult {
             // Get the kitty
             let mut kitty = Kitties::<T>::get(&kitty_id).ok_or(Error::<T>::NoKitty)?;
@@ -455,7 +446,6 @@ pub mod pallet {
                     ensure!(limit_price >= price, Error::<T>::BidPriceTooLow);
                     // Transfer the amount from buyer to seller
                     T::Assets::transfer(asset_id, &to, &from, price, false)?;
-                    // T::Currency::transfer(&to, &from, price, ExistenceRequirement::KeepAlive)?;
                     // Deposit sold event
                     Self::deposit_event(Event::Sold {
                         seller: from.clone(),

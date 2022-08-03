@@ -14,12 +14,12 @@ use sp_runtime::{
     BuildStorage,
 };
 
+// -------------------------------------------------------------------------------------------------
+//                                          Runtime
+// -------------------------------------------------------------------------------------------------
+
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
-
-pub type AccountId = u64;
-pub type AssetId = u32;
-pub type Balance = u64;
 
 // Configure a mock runtime to test the pallet.
 frame_support::construct_runtime!(
@@ -35,6 +35,18 @@ frame_support::construct_runtime!(
         SubstrateKitties: pallet_kitties::{Pallet, Call, Storage, Config<T>, Event<T>},
     }
 );
+
+// -------------------------------------------------------------------------------------------------
+//                                          Types
+// -------------------------------------------------------------------------------------------------
+
+pub type AccountId = u64;
+pub type AssetId = u32;
+pub type Balance = u64;
+
+// -------------------------------------------------------------------------------------------------
+//                                          System
+// -------------------------------------------------------------------------------------------------
 
 parameter_types! {
     pub const BlockHashCount: u64 = 250;
@@ -69,8 +81,10 @@ impl frame_system::Config for Test {
 }
 
 // -------------------------------------------------------------------------------------------------
+//                                          Assets
 // Copied from https://github.com/paritytech/substrate/blob/master/frame/assets/src/mock.rs
 // -------------------------------------------------------------------------------------------------
+
 use std::{cell::RefCell, collections::HashMap};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -111,7 +125,9 @@ impl pallet_assets::Config for Test {
     type Extra = ();
     type WeightInfo = ();
 }
+
 // -------------------------------------------------------------------------------------------------
+//                                          Balances
 // -------------------------------------------------------------------------------------------------
 
 parameter_types! {
@@ -130,6 +146,10 @@ impl pallet_balances::Config for Test {
     type WeightInfo = ();
 }
 
+// -------------------------------------------------------------------------------------------------
+//                                          Kitties
+// -------------------------------------------------------------------------------------------------
+
 parameter_types! {
     // One can owned at most 9,999 Kitties
     pub const MaxKittiesOwned: u32 = 9999;
@@ -139,13 +159,20 @@ impl pallet_kitties::Config for Test {
     type AssetId = AssetId;
     type Assets = Assets;
     type Balance = Balance;
-    type Currency = Balances;
     type Event = Event;
     type KittyRandomness = RandomnessCollectiveFlip;
     type MaxKittiesOwned = MaxKittiesOwned;
 }
 
+// -------------------------------------------------------------------------------------------------
+//                                          Randomness
+// -------------------------------------------------------------------------------------------------
+
 impl pallet_randomness_collective_flip::Config for Test {}
+
+// -------------------------------------------------------------------------------------------------
+//                                          Testing Setup
+// -------------------------------------------------------------------------------------------------
 
 pub const DEFAULT_DECIMALS: u8 = 6;
 pub const ALICE: AccountId = 1;
