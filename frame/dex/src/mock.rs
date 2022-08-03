@@ -12,13 +12,11 @@ use sp_runtime::{
     traits::{BlakeTwo256, IdentityLookup, Zero},
 };
 
-pub const DEFAULT_DECIMALS: u8 = 6;
+// -------------------------------------------------------------------------------------------------
+//                                          Runtime
+// -------------------------------------------------------------------------------------------------
 
 pub type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Runtime>;
-pub type AccountId = u64;
-pub type AmmId = u64;
-pub type AssetId = u32;
-pub type Balance = u64;
 pub type Block = frame_system::mocking::MockBlock<Runtime>;
 
 // Configure a mock runtime to test the pallet.
@@ -34,6 +32,21 @@ frame_support::construct_runtime!(
         TestPallet: pallet_dex,
     }
 );
+
+// -------------------------------------------------------------------------------------------------
+//                                          Types & Consts
+// -------------------------------------------------------------------------------------------------
+
+pub const DEFAULT_DECIMALS: u8 = 6;
+
+pub type AccountId = u64;
+pub type AmmId = u64;
+pub type AssetId = u32;
+pub type Balance = u64;
+
+// -------------------------------------------------------------------------------------------------
+//                                          System
+// -------------------------------------------------------------------------------------------------
 
 impl system::Config for Runtime {
     type BaseCallFilter = frame_support::traits::Everything;
@@ -63,8 +76,10 @@ impl system::Config for Runtime {
 }
 
 // -------------------------------------------------------------------------------------------------
+//                                          Assets
 // Copied from https://github.com/paritytech/substrate/blob/master/frame/assets/src/mock.rs
 // -------------------------------------------------------------------------------------------------
+
 use std::{cell::RefCell, collections::HashMap};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -106,6 +121,10 @@ impl pallet_assets::Config for Runtime {
     type WeightInfo = ();
 }
 
+// -------------------------------------------------------------------------------------------------
+//                                          Balances
+// -------------------------------------------------------------------------------------------------
+
 impl pallet_balances::Config for Runtime {
     type Balance = Balance;
     type DustRemoval = ();
@@ -117,7 +136,9 @@ impl pallet_balances::Config for Runtime {
     type MaxReserves = ();
     type ReserveIdentifier = [u8; 8];
 }
+
 // -------------------------------------------------------------------------------------------------
+//                                          DEX
 // -------------------------------------------------------------------------------------------------
 
 parameter_types! {
@@ -134,6 +155,10 @@ impl pallet_dex::Config for Runtime {
     type Event = Event;
     type PalletId = TestPalletId;
 }
+
+// -------------------------------------------------------------------------------------------------
+//                                          Testing Setup
+// -------------------------------------------------------------------------------------------------
 
 // Build genesis storage according to the mock runtime.
 pub fn new_test_ext() -> sp_io::TestExternalities {
