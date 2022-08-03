@@ -2,6 +2,7 @@
 
 use crate::{mock::*, pallet::Error, *};
 use frame_support::{assert_noop, assert_ok};
+use pallet_dex::{types::AssetType, traits::SimulateSwap};
 
 // This function checks that kitty ownership is set correctly in storage.
 // This will panic if things are not correct.
@@ -415,5 +416,76 @@ fn set_price_works() {
             SubstrateKitties::set_price(Origin::signed(1), non_dna, Some((set_price, DOT))),
             Error::<Test>::NoKitty
         );
+    });
+}
+
+// -------------------------------------------------------------------------------------------------
+//                                      'Integration' tests
+// -------------------------------------------------------------------------------------------------
+
+pub const DEFAULT_SHARE_ASSET: AssetId = 100;
+
+#[test]
+fn can_use_dex_to_obtain_token_for_kitty_purchase() {
+    new_test_ext(
+        vec![
+            (ALICE, *b"1234567890123456", Gender::Female),
+        ],
+        vec![
+            (DOT, BOB, UNIT),
+            (DOT, CHARLIE, UNIT * 5),
+            (USDC, CHARLIE, UNIT * 500)
+        ],
+    )
+    .execute_with(|| {
+        assert_ok!(Dex::create_amm(
+            Origin::root(),
+            DOT,
+            USDC,
+            DEFAULT_SHARE_ASSET,
+            30, // 30 bps, or 0.3%
+        ));
+
+        // Charlie initializes the AMM by providing liquidity
+        assert_ok!(Dex::provide_liquidity(
+            Origin::signed(CHARLIE),
+            0,
+            UNIT * 5,
+            UNIT * 500,
+        ));
+
+        // Alice sets a price of 40 USDC for her kitty
+        let id = KittiesOwned::<Test>::get(ALICE)[0];
+        let set_price = 40 * UNIT;
+        assert_ok!(SubstrateKitties::set_price(
+            Origin::signed(ALICE),
+            id,
+            Some((set_price, USDC)),
+        ));
+
+        // Bob queries the DEX for how much DOT he would need to swap to get the required USDC to
+        // buy Alice's kitty.
+        let dot_required = <Dex as SimulateSwap>::output_price(
+            0,
+            AssetType::Quote,
+            40 * UNIT
+        ).unwrap();
+
+        // Bob uses the DOT amount computed to aquire the USDC needed.
+        assert_ok!(Dex::swap(
+            Origin::signed(BOB),
+            0,
+            AssetType::Base,
+            dot_required * 1001 / 1000, // Send an extra bit to account for rounding errors
+            0
+        ));
+
+        // Bob can buy Alice's kitty, specifying some limit_price
+        assert_ok!(SubstrateKitties::buy_kitty(
+            Origin::signed(BOB),
+            id,
+            40 * UNIT
+        ));
+
     });
 }

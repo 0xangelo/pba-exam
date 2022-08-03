@@ -3,8 +3,8 @@
 pub use pallet::*;
 
 mod helpers;
-mod traits;
-mod types;
+pub mod traits;
+pub mod types;
 
 #[cfg(test)]
 mod mock;
@@ -159,6 +159,8 @@ pub mod pallet {
 
     #[pallet::error]
     pub enum Error<T> {
+        /// Raised when a swap would completely drain one side of the pool.
+        InsufficientLiquidity,
         /// Raised when an operation targets a nonexistent AMM.
         InvalidAmmId,
         /// Raised when trying to withdraw more LP shares than a user has in their account.
@@ -481,6 +483,7 @@ pub mod pallet {
             let amm_state = Self::try_get_amm_state(&amm_id)?;
 
             let full_bps: T::Balance = 10_000_u64.into();
+            // net_amount = (10000 - fees) * amount / 10000
             let net_amount = full_bps
                 .try_sub(&amm_state.fees_bps)?
                 .try_mul(&amount)?
@@ -508,6 +511,32 @@ pub mod pallet {
             }
 
             Ok(output_amount)
+        }
+
+        fn output_price(
+            amm_id: Self::AmmId,
+            asset_type: Self::AssetType,
+            amount: Self::Balance,
+        ) -> Result<Self::Balance, DispatchError> {
+            let amm_state = Self::try_get_amm_state(&amm_id)?;
+
+            let (output_reserves_after, input_reserves_before) = match asset_type {
+                AssetType::Base => (amm_state.base_reserves.try_sub(&amount)?, amm_state.quote_reserves),
+                AssetType::Quote => (amm_state.quote_reserves.try_sub(&amount)?, amm_state.base_reserves),
+            };
+
+            ensure!(!output_reserves_after.is_zero(), Error::<T>::InsufficientLiquidity);
+
+            let invariant = amm_state.get_k()?;
+            let input_reserves_after = invariant.try_div(&output_reserves_after)?;
+            let net_input = input_reserves_after.try_sub(&input_reserves_before)?;
+
+            // gross_input = net_input * 10000 / (10000 - fees)
+            let full_bps: T::Balance = 10_000_u64.into();
+            let gross_input = net_input.try_mul(&full_bps)?
+                .try_div(&full_bps.try_sub(&amm_state.fees_bps)?)?;
+
+            Ok(gross_input)
         }
     }
 
