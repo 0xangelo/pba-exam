@@ -283,45 +283,44 @@ fn dna_helpers_work_as_expected() {
 fn buy_kitty_works() {
     new_test_ext(
         vec![
-            (1, *b"1234567890123456", Gender::Female),
-            (2, *b"123456789012345a", Gender::Male),
-            (3, *b"1234567890123451", Gender::Male),
+            (ALICE, *b"1234567890123456", Gender::Female),
+            (BOB, *b"123456789012345a", Gender::Male),
         ],
-        vec![(DOT, ALICE, UNIT)],
+        vec![(DOT, ALICE, UNIT), (DOT, CHARLIE, UNIT * 100)],
     )
     .execute_with(|| {
         // Check buy_kitty works as expected
-        let id = KittiesOwned::<Test>::get(2)[0];
+        let id = KittiesOwned::<Test>::get(BOB)[0];
         let set_price = 4;
-        let balance_1_before = Balances::free_balance(&1);
-        let balance_2_before = Balances::free_balance(&2);
+        let balance_alice_before = Assets::balance(DOT, &ALICE);
+        let balance_bob_before = Assets::balance(DOT, &BOB);
 
-        // Account #2 sets a price of 4 for their kitty
+        // Bob sets a price of 4 for their kitty
         assert_ok!(SubstrateKitties::set_price(
-            Origin::signed(2),
+            Origin::signed(BOB),
             id,
             Some((set_price, DOT)),
         ));
 
-        // Account #1 can buy account #2's kitty, specifying some limit_price
+        // Alice can buy Bob's kitty, specifying some limit_price
         let limit_price = 6;
         assert_ok!(SubstrateKitties::buy_kitty(
-            Origin::signed(1),
+            Origin::signed(ALICE),
             id,
             limit_price
         ));
 
         // Check balance transfer works as expected
-        let balance_1_after = Balances::free_balance(&1);
-        let balance_2_after = Balances::free_balance(&2);
+        let balance_alice_after = Assets::balance(DOT, &ALICE);
+        let balance_bob_after = Assets::balance(DOT, &BOB);
 
         // We use set_price as this is the amount actually being charged
-        assert_eq!(balance_1_before - set_price, balance_1_after);
-        assert_eq!(balance_2_before + set_price, balance_2_after);
+        assert_eq!(balance_alice_before - set_price, balance_alice_after);
+        assert_eq!(balance_bob_before + set_price, balance_bob_after);
 
         // Now this kitty is not for sale, even from an account who can afford it
         assert_noop!(
-            SubstrateKitties::buy_kitty(Origin::signed(3), id, set_price),
+            SubstrateKitties::buy_kitty(Origin::signed(CHARLIE), id, set_price),
             Error::<Test>::NotForSale
         );
     });
@@ -331,52 +330,52 @@ fn buy_kitty_works() {
 fn buy_kitty_fails() {
     new_test_ext(
         vec![
-            (1, *b"1234567890123456", Gender::Female),
-            (2, *b"123456789012345a", Gender::Male),
-            (10, *b"1234567890123410", Gender::Male),
+            (ALICE, *b"1234567890123456", Gender::Female),
+            (BOB, *b"123456789012345a", Gender::Male),
+            (CHARLIE, *b"1234567890123410", Gender::Male),
         ],
-        vec![(DOT, ALICE, UNIT), (DOT, BOB, UNIT * 10)],
+        vec![(DOT, ALICE, UNIT), (DOT, BOB, UNIT * 10), (DOT, CHARLIE, UNIT / 2)],
     )
     .execute_with(|| {
         // Check buy_kitty fails when kitty is not for sale
-        let id = KittiesOwned::<Test>::get(1)[0];
+        let id = KittiesOwned::<Test>::get(ALICE)[0];
         // Kitty is not for sale
         assert_noop!(
-            SubstrateKitties::buy_kitty(Origin::signed(2), id, 2),
+            SubstrateKitties::buy_kitty(Origin::signed(BOB), id, 2),
             Error::<Test>::NotForSale
         );
 
         // Check buy_kitty fails when bid price is too low
         // New price is set to 4
-        let id = KittiesOwned::<Test>::get(2)[0];
+        let id = KittiesOwned::<Test>::get(BOB)[0];
         let set_price = 4;
         assert_ok!(SubstrateKitties::set_price(
-            Origin::signed(2),
+            Origin::signed(BOB),
             id,
             Some((set_price, DOT)),
         ));
 
-        // Account #10 can't buy this kitty for half the asking price
+        // Charlie can't buy this kitty for half the asking price
         assert_noop!(
-            SubstrateKitties::buy_kitty(Origin::signed(10), id, set_price / 2),
+            SubstrateKitties::buy_kitty(Origin::signed(CHARLIE), id, set_price / 2),
             Error::<Test>::BidPriceTooLow
         );
 
         // Check buy_kitty fails when balance is too low
         // Get the balance of account 10
-        let balance_of_account_10 = Balances::free_balance(&10);
+        let balance_of_charlie = Assets::balance(DOT, &CHARLIE);
 
-        // Reset the price to something higher than account 10's balance
+        // Reset the price to something higher than Charlie's balance
         assert_ok!(SubstrateKitties::set_price(
-            Origin::signed(2),
+            Origin::signed(BOB),
             id,
-            Some((balance_of_account_10 * 10, DOT)),
+            Some((balance_of_charlie * 10, DOT)),
         ));
 
         // Account 10 can't buy a kitty they can't afford
         assert_noop!(
-            SubstrateKitties::buy_kitty(Origin::signed(10), id, balance_of_account_10 * 10),
-            pallet_balances::Error::<Test>::InsufficientBalance
+            SubstrateKitties::buy_kitty(Origin::signed(CHARLIE), id, balance_of_charlie * 10),
+            pallet_assets::Error::<Test>::BalanceLow
         );
     });
 }

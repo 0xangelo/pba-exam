@@ -14,7 +14,7 @@ pub mod pallet {
     use frame_support::traits::fungibles::Transfer;
     use frame_support::{
         pallet_prelude::*,
-        traits::{tokens::ExistenceRequirement, Currency, Randomness},
+        traits::{Currency, Randomness},
     };
     use frame_system::pallet_prelude::*;
     // use scale_info::TypeInfo;
@@ -29,8 +29,7 @@ pub mod pallet {
     use frame_support::serde::{Deserialize, Serialize};
 
     // Handles our pallet's currency abstraction
-    type BalanceOf<T> =
-        <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+    type BalanceOf<T> = <T as Config>::Balance;
 
     // Struct for holding kitty information
     #[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
@@ -154,7 +153,7 @@ pub mod pallet {
             seller: T::AccountId,
             buyer: T::AccountId,
             kitty: [u8; 16],
-            price: BalanceOf<T>,
+            price: (BalanceOf<T>, T::AssetId),
         },
     }
 
@@ -452,16 +451,17 @@ pub mod pallet {
             // protection so the seller isn't able to front-run the transaction.
             if let Some(limit_price) = maybe_limit_price {
                 // Current kitty price if for sale
-                if let Some((price, _)) = kitty.price {
+                if let Some((price, asset_id)) = kitty.price {
                     ensure!(limit_price >= price, Error::<T>::BidPriceTooLow);
                     // Transfer the amount from buyer to seller
-                    T::Currency::transfer(&to, &from, price, ExistenceRequirement::KeepAlive)?;
+                    T::Assets::transfer(asset_id, &to, &from, price, false)?;
+                    // T::Currency::transfer(&to, &from, price, ExistenceRequirement::KeepAlive)?;
                     // Deposit sold event
                     Self::deposit_event(Event::Sold {
                         seller: from.clone(),
                         buyer: to.clone(),
                         kitty: kitty_id,
-                        price,
+                        price: (price, asset_id),
                     });
                 } else {
                     // Kitty price is set to `None` and is not for sale

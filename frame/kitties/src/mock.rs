@@ -150,6 +150,7 @@ impl pallet_randomness_collective_flip::Config for Test {}
 pub const DEFAULT_DECIMALS: u8 = 6;
 pub const ALICE: AccountId = 1;
 pub const BOB: AccountId = 2;
+pub const CHARLIE: AccountId = 3;
 pub const DOT: AssetId = 0;
 pub const USDC: AssetId = 1;
 pub const KSM: AssetId = 2;
