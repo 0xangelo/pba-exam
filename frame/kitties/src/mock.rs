@@ -28,12 +28,12 @@ frame_support::construct_runtime!(
         NodeBlock = Block,
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
-        System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
+        System: frame_system,
         Assets: pallet_assets,
-        Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
+        Balances: pallet_balances,
         Dex: pallet_dex,
-        RandomnessCollectiveFlip: pallet_randomness_collective_flip::{Pallet, Storage},
-        SubstrateKitties: pallet_kitties::{Pallet, Call, Storage, Config<T>, Event<T>},
+        RandomnessCollectiveFlip: pallet_randomness_collective_flip,
+        SubstrateKitties: pallet_kitties,
     }
 );
 
