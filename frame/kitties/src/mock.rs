@@ -3,7 +3,7 @@
 use crate as pallet_kitties;
 use frame_support::{
     parameter_types,
-    traits::{ConstU32, ConstU64, GenesisBuild},
+    traits::{ConstU32, ConstU64, GenesisBuild}, PalletId,
 };
 use pallet_assets::FrozenBalance;
 use pallet_kitties::Gender;
@@ -11,7 +11,7 @@ use sp_core::H256;
 use sp_runtime::{
     testing::Header,
     traits::{BlakeTwo256, IdentityLookup, Zero},
-    BuildStorage,
+    BuildStorage, FixedU128,
 };
 
 // -------------------------------------------------------------------------------------------------
@@ -31,6 +31,7 @@ frame_support::construct_runtime!(
         System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
         Assets: pallet_assets,
         Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
+        Dex: pallet_dex,
         RandomnessCollectiveFlip: pallet_randomness_collective_flip::{Pallet, Storage},
         SubstrateKitties: pallet_kitties::{Pallet, Call, Storage, Config<T>, Event<T>},
     }
@@ -41,6 +42,7 @@ frame_support::construct_runtime!(
 // -------------------------------------------------------------------------------------------------
 
 pub type AccountId = u64;
+pub type AmmId = u64;
 pub type AssetId = u32;
 pub type Balance = u64;
 
@@ -144,6 +146,26 @@ impl pallet_balances::Config for Test {
     type MaxReserves = ();
     type ReserveIdentifier = [u8; 8];
     type WeightInfo = ();
+}
+
+// -------------------------------------------------------------------------------------------------
+//                                          DEX
+// -------------------------------------------------------------------------------------------------
+
+parameter_types! {
+    pub const TestPalletId: PalletId = PalletId(*b"test_pid");
+    pub const DefaultDecimals: u8 = DEFAULT_DECIMALS;
+}
+
+impl pallet_dex::Config for Test {
+    type AmmId = AmmId;
+    type AssetId = AssetId;
+    type Assets = Assets;
+    type Balance = Balance;
+    type Decimal = FixedU128;
+    type DefaultDecimals = DefaultDecimals;
+    type Event = Event;
+    type PalletId = TestPalletId;
 }
 
 // -------------------------------------------------------------------------------------------------

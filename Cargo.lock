@@ -4067,6 +4067,7 @@ dependencies = [
  "frame-system",
  "pallet-assets",
  "pallet-balances",
+ "pallet-dex",
  "pallet-randomness-collective-flip",
  "parity-scale-codec",
  "scale-info",
