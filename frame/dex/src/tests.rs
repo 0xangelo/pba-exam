@@ -10,22 +10,23 @@ use pallet_assets::Error as AssetsError;
 // -------------------------------------------------------------------------------------------------
 //                                          Setup
 // -------------------------------------------------------------------------------------------------
-pub const DEFAULT_BASE_ASSET: AssetId = 0;
-pub const DEFAULT_QUOTE_ASSET: AssetId = 1;
-pub const DEFAULT_SHARE_ASSET: AssetId = 100;
-pub const DEFAULT_FEES_BPS: Balance = 30;
-
 pub const ALICE: AccountId = 1;
 pub const BOB: AccountId = 2;
+pub const CHARLIE: AccountId = 3;
 pub const DOT: AssetId = 0;
 pub const USDC: AssetId = 1;
 pub const KSM: AssetId = 2;
 pub const UNIT: Balance = 10_u64.pow(DEFAULT_DECIMALS as u32) as Balance;
 
+pub const DEFAULT_BASE_ASSET: AssetId = DOT;
+pub const DEFAULT_QUOTE_ASSET: AssetId = USDC;
+pub const DEFAULT_SHARE_ASSET: AssetId = 100;
+pub const DEFAULT_FEES_BPS: Balance = 30;
+
 impl Default for ExtBuilder {
     fn default() -> Self {
         Self {
-            assets: vec![(0, 0, true, 1), (1, 0, true, 1), (2, 0, true, 1)],
+            assets: vec![(DOT, 0, true, 1), (USDC, 0, true, 1), (KSM, 0, true, 1)],
             metadata: vec![
                 (
                     DOT,
@@ -63,6 +64,9 @@ pub fn run_to_block(n: u64) {
     }
 }
 
+// -------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------
+
 #[test]
 fn ext_builder_works() {
     ExtBuilder {
@@ -74,8 +78,6 @@ fn ext_builder_works() {
         assert_eq!(<Assets as Inspect<AccountId>>::balance(USDC, &ALICE), UNIT);
     })
 }
-// -------------------------------------------------------------------------------------------------
-// -------------------------------------------------------------------------------------------------
 
 #[test]
 fn only_root_can_create_amm() {
@@ -590,5 +592,71 @@ fn swap_base_incurs_slippage() {
             TestPallet::swap(Origin::signed(BOB), 0, AssetType::Base, UNIT / 2, UNIT * 50),
             Error::<Runtime>::SlippageExceeded
         );
+    })
+}
+
+#[test]
+fn should_accrue_rewards_to_liquidity_providers() {
+    ExtBuilder {
+        accounts: vec![
+            (DOT, ALICE, UNIT),
+            (USDC, ALICE, UNIT * 100),
+            (DOT, BOB, UNIT / 2),
+            (USDC, BOB, UNIT * 50),
+            (USDC, CHARLIE, UNIT * 10)
+        ],
+        ..Default::default()
+    }
+    .build()
+    .execute_with(|| {
+        run_to_block(1);
+
+        default_amm();
+
+        assert_ok!(TestPallet::provide_liquidity(
+            Origin::signed(ALICE),
+            0,
+            UNIT,
+            UNIT * 100,
+        ));
+
+        assert_ok!(TestPallet::provide_liquidity(
+            Origin::signed(BOB),
+            0,
+            UNIT / 2,
+            UNIT * 50,
+        ));
+
+        // Charlie swaps twice and returns AMM back to initial reserve proportions.
+        assert_ok!(TestPallet::swap(
+            Origin::signed(CHARLIE),
+            0,
+            AssetType::Quote,
+            UNIT * 10,
+            0
+        ));
+        assert_ok!(TestPallet::swap(
+            Origin::signed(CHARLIE),
+            0,
+            AssetType::Base,
+            <Assets as Inspect<AccountId>>::balance(DOT, &CHARLIE),
+            0
+        ));
+        // Ensure fees were charged during the two operations.
+        assert_eq!(<Assets as Inspect<AccountId>>::balance(DOT, &CHARLIE), 0);
+        assert!(<Assets as Inspect<AccountId>>::balance(USDC, &CHARLIE) < UNIT * 10);
+
+        let amm_state = TestPallet::amm_state(0).unwrap();
+        assert_eq!(amm_state.base_reserves, UNIT + UNIT / 2);
+        assert!(amm_state.quote_reserves > UNIT * 150);
+
+        // Bob withdraws his shares and realizes his rewards
+        assert_ok!(TestPallet::withdraw(
+            Origin::signed(BOB),
+            0,
+            50 * UNIT
+        ));
+        assert_eq!(<Assets as Inspect<AccountId>>::balance(DOT, &BOB), UNIT / 2);
+        assert!(<Assets as Inspect<AccountId>>::balance(USDC, &BOB) > UNIT * 50);
     })
 }
